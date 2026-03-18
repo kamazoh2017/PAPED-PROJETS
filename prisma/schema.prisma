@@ -1,0 +1,124 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Projet {
+  id              String   @id @default(cuid())
+  libelle         String   @unique
+  description     String?
+  statut          String   @default("Demarrage")
+  chefProjetId    String
+  dateCreation    DateTime @default(now())
+
+  chefProjet      PersonneRessource @relation("ProjetChef", fields: [chefProjetId], references: [id])
+  equipeProjet    PersonneRessource[] @relation("EquipeProjet")
+  taches          Tache[]
+  partiesPrenantes PartiePrenanteProjets[]
+
+  @@map("projets")
+}
+
+model Entite {
+  id      String   @id @default(cuid())
+  libelle String   @unique
+  tutelle String?
+
+  personnesRessources   PersonneRessource[]
+  partiesPrenantes      PartiePrenante[]
+  tachesPeriodiqueExec  TachePerodique[]    @relation("TachePeriodiqueExecutant")
+
+  @@map("entites")
+}
+
+model PersonneRessource {
+  id            String   @id @default(cuid())
+  nom           String
+  prenoms       String
+  telephone     String?
+  email         String   @unique
+  fonction      String
+  entiteId      String
+  estChefProjet Boolean  @default(false)
+  dateCreation  DateTime @default(now())
+
+  entite                  Entite                  @relation(fields: [entiteId], references: [id], onDelete: Cascade)
+  projetsChef             Projet[]                @relation("ProjetChef")
+  equipeProjet            Projet[]                @relation("EquipeProjet")
+  tachesAssignees         Tache[]                 @relation("TacheAssignee")
+  partiesPrenantes        PartiePrenante[]
+  tachesPeriodiqueResp    TachePerodique[]        @relation("TachePeriodiqueResponsable")
+
+  @@map("personnes_ressources")
+}
+
+model PartiePrenante {
+  id            String  @id @default(cuid())
+  libelle       String
+  type          String
+  entiteId      String?
+  responsableId String?
+
+  entite       Entite?             @relation(fields: [entiteId], references: [id], onDelete: SetNull)
+  responsable  PersonneRessource?  @relation(fields: [responsableId], references: [id], onDelete: SetNull)
+  projetChamps PartiePrenanteProjets[]
+
+  @@map("parties_prenantes")
+}
+
+model PartiePrenanteProjets {
+  id             String @id @default(cuid())
+  projetId       String
+  partiePrenantId String
+
+  projet         Projet         @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  partiePrenante PartiePrenante @relation(fields: [partiePrenantId], references: [id], onDelete: Cascade)
+
+  @@map("parties_prenantes_projets")
+}
+
+model Tache {
+  id                      String   @id @default(cuid())
+  projetId                String
+  libelle                 String
+  description             String?
+  priorite                String   @default("Moyenne")
+  assigneAId              String?
+  statut                  String   @default("Backlog")
+  dateCreation            DateTime @default(now())
+  dateDebutPrevisionnelle DateTime?
+  dateDebutEffective      DateTime?
+  dateFinPrevisionnelle   DateTime?
+  dateFinEffective        DateTime?
+  ordre                   Int      @default(0)
+
+  projet   Projet              @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  assigneA PersonneRessource?  @relation("TacheAssignee", fields: [assigneAId], references: [id], onDelete: SetNull)
+
+  @@map("taches")
+}
+
+model TachePerodique {
+  id               String   @id @default(cuid())
+  libelle          String
+  description      String?
+  periodicite      String
+  dateDebut        DateTime
+  dateFin          DateTime?
+  responsableId    String
+  entiteExecutionId String
+  statut           String   @default("A faire")
+  dateCreation     DateTime @default(now())
+
+  responsable     PersonneRessource @relation(fields: [responsableId], references: [id], onDelete: Cascade, name: "TachePeriodiqueResponsable")
+  entiteExecution Entite            @relation(fields: [entiteExecutionId], references: [id], onDelete: Cascade, name: "TachePeriodiqueExecutant")
+
+  @@map("taches_periodiques")
+}
