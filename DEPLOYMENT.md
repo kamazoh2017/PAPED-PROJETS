@@ -21,17 +21,17 @@ NODE_ENV=production
 1. Push repository to GitHub.
 2. Import repo in Vercel.
 3. Framework preset: `Next.js`.
-4. Build command: `npm run vercel-build`
+4. Build command: `npm run build`
 5. Install command: `npm install`
 
 ## 4. Database schema deployment
-This project currently uses `prisma db push` in `vercel-build`:
+This project currently uses the standard `build` script, which can initialize PostgreSQL idempotently during deployment:
 
 ```bash
-npm run vercel-build
+npm run build
 ```
 
-This is intentional to bootstrap PostgreSQL quickly from Prisma schema.
+This is intentional to bootstrap PostgreSQL quickly from Prisma schema while remaining safe to run multiple times.
 
 ## 5. Local production-like check
 Before first deployment, run locally with Supabase connection string in `.env.local`:

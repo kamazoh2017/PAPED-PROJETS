@@ -41,7 +41,7 @@ Railway auto-detects Next.js. In your service settings, set:
 
 **Build Command:**
 ```bash
-npm install && prisma generate && npx prisma db push && npm run build
+npm run build
 ```
 
 **Start Command:**
@@ -50,6 +50,8 @@ npm start
 ```
 
 Railway will use your `package.json` scripts by default, so `npm start` runs Next.js in production mode.
+The `build` script is Railway-aware: if `DATABASE_URL` is PostgreSQL, it performs an idempotent `prisma db push`
+and `prisma db seed` before building the app. If `DATABASE_URL` is SQLite (local dev), it skips those deployment steps.
 
 ## 7. Deploy
 1. Push your code to GitHub (any branch you configured):
@@ -72,7 +74,8 @@ Railway will use your `package.json` scripts by default, so `npm start` runs Nex
 ## 9. Additional Notes
 
 ### Database Migrations
-- Prisma db push runs during build (included in build command above)
+- Prisma db push runs during Railway build when `DATABASE_URL` points to PostgreSQL
+- Prisma seed runs during Railway build and is idempotent for `super@super`
 - Schema changes auto-sync on each deployment
 
 ### Custom Domain (Optional)

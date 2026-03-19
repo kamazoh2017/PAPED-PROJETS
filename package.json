@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "node scripts/railway-build.js",
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
@@ -12,7 +12,8 @@
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
-    "vercel-build": "sed -i 's/provider = \"sqlite\"/provider = \"postgresql\"/' prisma/schema.prisma && prisma db push && prisma generate && prisma db seed && next build"
+    "railway-build": "node scripts/railway-build.js",
+    "vercel-build": "npm run railway-build"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
