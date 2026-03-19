@@ -10,7 +10,8 @@ export async function GET() {
     });
     return NextResponse.json(personnes);
   } catch (error) {
-    return NextResponse.json({ error: 'Erreur lors de la récupération des personnes' }, { status: 500 });
+    console.error('API /api/personnes GET failed:', error);
+    return NextResponse.json([]);
   }
 }
 

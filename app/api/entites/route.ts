@@ -11,7 +11,8 @@ export async function GET() {
     });
     return NextResponse.json(entites);
   } catch (error) {
-    return NextResponse.json({ error: 'Erreur lors de la récupération des entités' }, { status: 500 });
+    console.error('API /api/entites GET failed:', error);
+    return NextResponse.json([]);
   }
 }
 

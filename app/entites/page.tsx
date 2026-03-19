@@ -24,9 +24,11 @@ export default function EntitesPage() {
     try {
       const res = await fetch('/api/entites');
       const data = await res.json();
-      setEntites(data);
+      if (!res.ok) { setEntites([]); return; }
+      setEntites(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Erreur:', error);
+      setEntites([]);
     } finally {
       setLoading(false);
     }

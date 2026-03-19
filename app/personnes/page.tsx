@@ -12,9 +12,14 @@ interface Personne {
   entite: { libelle: string };
 }
 
+interface EntiteOption {
+  id: string;
+  libelle: string;
+}
+
 export default function PersonnesPage() {
   const [personnes, setPersonnes] = useState<Personne[]>([]);
-  const [entites, setEntites] = useState<any[]>([]);
+  const [entites, setEntites] = useState<EntiteOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
@@ -35,9 +40,16 @@ export default function PersonnesPage() {
     try {
       const res = await fetch('/api/personnes');
       const data = await res.json();
-      setPersonnes(data);
+
+      if (!res.ok) {
+        setPersonnes([]);
+        return;
+      }
+
+      setPersonnes(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Erreur:', error);
+      setPersonnes([]);
     } finally {
       setLoading(false);
     }
@@ -47,9 +59,17 @@ export default function PersonnesPage() {
     try {
       const res = await fetch('/api/entites');
       const data = await res.json();
-      setEntites(data);
+
+      if (!res.ok) {
+        console.error('Erreur API entites:', data?.error || 'Erreur inconnue');
+        setEntites([]);
+        return;
+      }
+
+      setEntites(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Erreur:', error);
+      setEntites([]);
     }
   };
 
