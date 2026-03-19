@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/railway-build.js",
-    "start": "next start",
+    "start": "node scripts/railway-start.js",
     "lint": "next lint",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
@@ -13,6 +13,7 @@
     "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
     "railway-build": "node scripts/railway-build.js",
+    "railway-start": "node scripts/railway-start.js",
     "vercel-build": "npm run railway-build"
   },
   "prisma": {

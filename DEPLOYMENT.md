@@ -25,10 +25,12 @@ NODE_ENV=production
 5. Install command: `npm install`
 
 ## 4. Database schema deployment
-This project currently uses the standard `build` script, which can initialize PostgreSQL idempotently during deployment:
+This project currently uses the standard `build` and `start` scripts.
+The build compiles the app and prepares Prisma; the runtime start initializes PostgreSQL idempotently before serving traffic:
 
 ```bash
 npm run build
+npm start
 ```
 
 This is intentional to bootstrap PostgreSQL quickly from Prisma schema while remaining safe to run multiple times.

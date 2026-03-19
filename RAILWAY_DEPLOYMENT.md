@@ -50,8 +50,9 @@ npm start
 ```
 
 Railway will use your `package.json` scripts by default, so `npm start` runs Next.js in production mode.
-The `build` script is Railway-aware: if `DATABASE_URL` is PostgreSQL, it performs an idempotent `prisma db push`
-and `prisma db seed` before building the app. If `DATABASE_URL` is SQLite (local dev), it skips those deployment steps.
+The `build` script is Railway-aware and prepares Prisma + Next.js for PostgreSQL without modifying the database.
+The `start` script is Railway-aware: if `DATABASE_URL` is PostgreSQL, it performs an idempotent `prisma db push`
+and `prisma db seed` before starting the app. If `DATABASE_URL` is SQLite (local dev), it skips those deployment steps.
 
 ## 7. Deploy
 1. Push your code to GitHub (any branch you configured):
@@ -74,8 +75,8 @@ and `prisma db seed` before building the app. If `DATABASE_URL` is SQLite (local
 ## 9. Additional Notes
 
 ### Database Migrations
-- Prisma db push runs during Railway build when `DATABASE_URL` points to PostgreSQL
-- Prisma seed runs during Railway build and is idempotent for `super@super`
+- Prisma db push runs during Railway start when `DATABASE_URL` points to PostgreSQL
+- Prisma seed runs during Railway start and is idempotent for `super@super`
 - Schema changes auto-sync on each deployment
 
 ### Custom Domain (Optional)
@@ -89,6 +90,7 @@ and `prisma db seed` before building the app. If `DATABASE_URL` is SQLite (local
 | Issue | Fix |
 |-------|-----|
 | Build fails - "DATABASE_URL not set" | Ensure PostgreSQL service is linked, redeploy |
+| Build fails - `P1001` on Railway internal host | Do not run `db push` during build; keep it in `npm start` |
 | Login not working | Check SESSION_COOKIE in code, verify `super@super` account exists |
 | 500 error on pages | Check logs in Railway dashboard |
 | Prisma generate fails | Ensure @prisma/client is in package.json dependencies |

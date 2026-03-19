@@ -5,7 +5,6 @@ const { spawnSync } = require('child_process');
 const rootDir = path.resolve(__dirname, '..');
 const schemaPath = path.join(rootDir, 'prisma', 'schema.prisma');
 const tempSchemaPath = path.join(rootDir, 'prisma', 'schema.railway.prisma');
-const generatedClientPath = path.join(rootDir, 'node_modules', '.prisma', 'client', 'index.js');
 const databaseUrl = process.env.DATABASE_URL || '';
 const isPostgresUrl = /^postgres(ql)?:\/\//i.test(databaseUrl);
 
@@ -26,7 +25,7 @@ function run(command) {
   }
 }
 
-function getBuildSchemaPath() {
+function getRuntimeSchemaPath() {
   if (!isPostgresUrl) {
     return schemaPath;
   }
@@ -35,7 +34,7 @@ function getBuildSchemaPath() {
   const patchedSchema = originalSchema.replace('provider = "sqlite"', 'provider = "postgresql"');
 
   if (patchedSchema === originalSchema) {
-    throw new Error('Unable to patch Prisma schema provider for PostgreSQL build.');
+    throw new Error('Unable to patch Prisma schema provider for PostgreSQL runtime.');
   }
 
   fs.writeFileSync(tempSchemaPath, patchedSchema);
@@ -48,28 +47,20 @@ function cleanupTempSchema() {
   }
 }
 
-function shouldGenerateClient() {
-  return isPostgresUrl || !fs.existsSync(generatedClientPath) || process.env.FORCE_PRISMA_GENERATE === '1';
-}
-
 function main() {
-  const buildSchemaPath = getBuildSchemaPath();
-  const quotedSchemaPath = `"${buildSchemaPath}"`;
+  const runtimeSchemaPath = getRuntimeSchemaPath();
+  const quotedSchemaPath = `"${runtimeSchemaPath}"`;
 
   try {
-    if (shouldGenerateClient()) {
-      run(`npx prisma generate --schema ${quotedSchemaPath}`);
-    } else {
-      console.log('[build] Reusing existing Prisma client for local SQLite build.');
-    }
-
     if (isPostgresUrl) {
-      console.log('[build] PostgreSQL deployment detected. Skipping database changes during build.');
+      console.log('[start] PostgreSQL runtime detected. Running idempotent db push and seed before starting app.');
+      run(`npx prisma db push --schema ${quotedSchemaPath}`);
+      run('npx prisma db seed');
     } else {
-      console.log('[build] Local/SQLite build detected.');
+      console.log('[start] Local/SQLite runtime detected. Starting app without deployment db init.');
     }
 
-    run('npx next build');
+    run('npx next start');
   } finally {
     cleanupTempSchema();
   }

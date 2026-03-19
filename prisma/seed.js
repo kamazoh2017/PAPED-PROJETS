@@ -12,36 +12,28 @@ function hashPassword(password) {
 }
 
 async function main() {
-  const existing = await prisma.compteAcces.findUnique({
+  const result = await prisma.compteAcces.upsert({
     where: { login: SUPER_ADMIN_LOGIN },
-    select: { id: true },
-  });
-
-  if (existing) {
-    await prisma.compteAcces.update({
-      where: { id: existing.id },
-      data: {
-        estSuperAdmin: true,
-        estActif: true,
-        login: SUPER_ADMIN_LOGIN,
-      },
-    });
-
-    console.log(`[seed] Super admin already exists: ${SUPER_ADMIN_LOGIN}`);
-    return;
-  }
-
-  await prisma.compteAcces.create({
-    data: {
+    update: {
+      estSuperAdmin: true,
+      estActif: true,
+      login: SUPER_ADMIN_LOGIN,
+    },
+    create: {
       login: SUPER_ADMIN_LOGIN,
       estSuperAdmin: true,
       estActif: true,
       doitChangerMdp: false,
       motDePasseHash: hashPassword(DEFAULT_PASSWORD),
     },
+    select: {
+      id: true,
+      login: true,
+      doitChangerMdp: true,
+    },
   });
 
-  console.log(`[seed] Super admin created: ${SUPER_ADMIN_LOGIN}`);
+  console.log(`[seed] Super admin ensured: ${result.login}`);
 }
 
 main()
