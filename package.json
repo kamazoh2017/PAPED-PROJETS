@@ -11,7 +11,11 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:push": "prisma db push",
-    "vercel-build": "sed -i 's/provider = \"sqlite\"/provider = \"postgresql\"/' prisma/schema.prisma && prisma db push && prisma generate && next build"
+    "prisma:seed": "prisma db seed",
+    "vercel-build": "sed -i 's/provider = \"sqlite\"/provider = \"postgresql\"/' prisma/schema.prisma && prisma db push && prisma generate && prisma db seed && next build"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "dependencies": {
     "react": "^18.2.0",
