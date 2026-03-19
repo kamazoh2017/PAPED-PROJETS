@@ -13,7 +13,8 @@ export async function GET() {
     });
     return NextResponse.json(projets);
   } catch (error) {
-    return NextResponse.json({ error: 'Erreur lors de la récupération des projets' }, { status: 500 });
+    console.error('API /api/projets GET failed:', error);
+    return NextResponse.json([]);
   }
 }
 
@@ -46,6 +47,8 @@ export async function POST(request: NextRequest) {
         description: body.description,
         statut: body.statut || 'Demarrage',
         chefProjetId: body.chefProjetId,
+        dateDebutPrevisionnelle: body.dateDebutPrevisionnelle ? new Date(body.dateDebutPrevisionnelle) : null,
+        dateFinPrevisionnelle: body.dateFinPrevisionnelle ? new Date(body.dateFinPrevisionnelle) : null,
         equipeProjet: {
           connect: { id: body.chefProjetId },
         },

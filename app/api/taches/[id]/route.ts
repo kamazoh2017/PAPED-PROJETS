@@ -1,11 +1,18 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
+function toOptionalDate(value: unknown): Date | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     const updates: any = {
       libelle: body.libelle,
@@ -13,8 +20,8 @@ export async function PUT(
       priorite: body.priorite,
       assigneAId: body.assigneAId,
       statut: body.statut,
-      dateDebutPrevisionnelle: body.dateDebutPrevisionnelle,
-      dateFinPrevisionnelle: body.dateFinPrevisionnelle,
+      dateDebutPrevisionnelle: toOptionalDate(body.dateDebutPrevisionnelle),
+      dateFinPrevisionnelle: toOptionalDate(body.dateFinPrevisionnelle),
     };
 
     // Remplir automatiquement les dates effectives
@@ -26,7 +33,7 @@ export async function PUT(
     }
 
     const tache = await prisma.tache.update({
-      where: { id: params.id },
+      where: { id },
       data: updates,
       include: {
         assigneA: true,
@@ -61,12 +68,13 @@ export async function PUT(
 }
 
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     await prisma.tache.delete({
-      where: { id: params.id },
+      where: { id },
     });
     return NextResponse.json({ message: 'Tâche supprimée' });
   } catch (error) {

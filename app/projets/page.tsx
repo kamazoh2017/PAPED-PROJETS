@@ -9,6 +9,8 @@ interface Projet {
   description?: string;
   statut: string;
   dateCreation: string;
+  dateDebutPrevisionnelle?: string;
+  dateFinPrevisionnelle?: string;
   chefProjet?: { nom: string; prenoms: string };
   equipeProjet: any[];
   taches: any[];
@@ -22,12 +24,41 @@ interface Personne {
   estChefProjet?: boolean;
 }
 
+type Avancement = 'retard' | 'a-jour' | 'en-avance';
+
+const AVANCEMENT_CONFIG: Record<Avancement, { label: string; classes: string }> = {
+  retard:      { label: 'En retard',  classes: 'bg-red-100 text-red-700' },
+  'a-jour':    { label: 'À jour',     classes: 'bg-blue-100 text-blue-700' },
+  'en-avance': { label: 'En avance',  classes: 'bg-green-100 text-green-700' },
+};
+
+function getAvanancementProjet(statut: string, dateDebutPrev?: string, dateFinPrev?: string): Avancement | null {
+  const STATUTS_TERMINAUX = ['Terminé', 'Réceptionné', 'Clôturé'];
+  const STATUTS_ACTIFS = ['Demarrage', 'En cours'];
+  if (!STATUTS_ACTIFS.includes(statut) && !STATUTS_TERMINAUX.includes(statut)) return null;
+
+  const now = Date.now();
+  const fin = dateFinPrev ? new Date(dateFinPrev).getTime() : null;
+  const debut = dateDebutPrev ? new Date(dateDebutPrev).getTime() : null;
+
+  if (STATUTS_TERMINAUX.includes(statut)) {
+    // En avance : le projet est clôturé et la date de fin prévisionnelle n'est pas encore dépassée
+    if (fin && fin > now) return 'en-avance';
+    return 'a-jour';
+  }
+
+  // Projet non terminal
+  if (fin && fin < now) return 'retard';
+  if (debut && debut < now && statut === 'Demarrage') return 'retard';
+  return 'a-jour';
+}
+
 export default function ProjetsPage() {
   const [projets, setProjets] = useState<Projet[]>([]);
   const [personnes, setPersonnes] = useState<Personne[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ libelle: '', description: '', chefProjetId: '' });
+  const [formData, setFormData] = useState({ libelle: '', description: '', chefProjetId: '', dateDebutPrevisionnelle: '', dateFinPrevisionnelle: '' });
   const [formError, setFormError] = useState('');
 
   useEffect(() => {
@@ -39,9 +70,16 @@ export default function ProjetsPage() {
     try {
       const res = await fetch('/api/projets');
       const data = await res.json();
-      setProjets(data);
+
+      if (!res.ok) {
+        setProjets([]);
+        return;
+      }
+
+      setProjets(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Erreur lors du chargement des projets:', error);
+      setProjets([]);
     } finally {
       setLoading(false);
     }
@@ -86,7 +124,7 @@ export default function ProjetsPage() {
 
       if (res.ok) {
         await fetchProjets();
-        setFormData({ libelle: '', description: '', chefProjetId: '' });
+        setFormData({ libelle: '', description: '', chefProjetId: '', dateDebutPrevisionnelle: '', dateFinPrevisionnelle: '' });
         setShowForm(false);
       }
     } catch (error) {
@@ -146,6 +184,26 @@ export default function ProjetsPage() {
               ))}
             </select>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Début prévisionnel</label>
+              <input
+                type="date"
+                value={formData.dateDebutPrevisionnelle}
+                onChange={(e) => setFormData({ ...formData, dateDebutPrevisionnelle: e.target.value })}
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Fin prévisionnelle</label>
+              <input
+                type="date"
+                value={formData.dateFinPrevisionnelle}
+                onChange={(e) => setFormData({ ...formData, dateFinPrevisionnelle: e.target.value })}
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+          </div>
           {formError && <p className="text-sm text-red-600">{formError}</p>}
           <div className="flex gap-4">
             <button
@@ -171,7 +229,10 @@ export default function ProjetsPage() {
         <p className="text-gray-500">Aucun projet créé.</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projets.map((projet) => (
+          {projets.map((projet) => {
+            const avancement = getAvanancementProjet(projet.statut, projet.dateDebutPrevisionnelle, projet.dateFinPrevisionnelle);
+            const avCfg = avancement ? AVANCEMENT_CONFIG[avancement] : null;
+            return (
             <Link
               key={projet.id}
               href={`/projets/${projet.id}`}
@@ -179,15 +240,26 @@ export default function ProjetsPage() {
             >
               <h2 className="text-xl font-semibold text-primary mb-2">{projet.libelle}</h2>
               <p className="text-gray-600 mb-4">{projet.description || 'Pas de description'}</p>
-              <div className="flex justify-between items-center mb-2">
+              <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
                 <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-medium">
                   {projet.statut}
                 </span>
+                {avCfg && (
+                  <span className={`text-xs font-semibold px-2 py-1 rounded ${avCfg.classes}`}>
+                    {avCfg.label}
+                  </span>
+                )}
                 <span className="text-sm text-gray-500">Équipe: {projet.equipeProjet.length}</span>
               </div>
-              <span className="text-sm text-gray-500">Tâches: {projet.taches.length}</span>
+              <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
+                <span>Tâches: {projet.taches.length}</span>
+                {projet.dateFinPrevisionnelle && (
+                  <span>Fin prév. {new Date(projet.dateFinPrevisionnelle).toLocaleDateString('fr-FR')}</span>
+                )}
+              </div>
             </Link>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
