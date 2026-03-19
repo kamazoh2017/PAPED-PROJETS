@@ -13,6 +13,7 @@ interface Personne {
   nom: string;
   prenoms: string;
   email: string;
+  telephone?: string;
   entite: Entite;
 }
 
@@ -116,7 +117,7 @@ export default function ComptesAccesPage() {
         <h2 className="text-lg font-semibold text-slate-800">1. Creation de compte utilisateur</h2>
         <p className="mt-1 text-xs text-slate-500">
           Selectionnez une ressource d'entite. Tous les utilisateurs recoivent le mot de passe par defaut 0123456789,
-          qu'ils peuvent modifier dans leur profil.
+          qu'ils peuvent modifier dans leur profil. La connexion se fait avec telephone (10 chiffres) ou email.
         </p>
 
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -130,7 +131,7 @@ export default function ComptesAccesPage() {
               <option value="">Selectionner une ressource</option>
               {personnesSansCompte.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.prenoms} {p.nom} - {p.email} ({p.entite?.libelle || 'Sans entite'})
+                  {p.prenoms} {p.nom} - {p.telephone || 'sans tel'} / {p.email} ({p.entite?.libelle || 'Sans entite'})
                 </option>
               ))}
             </select>
@@ -178,6 +179,7 @@ export default function ComptesAccesPage() {
                   <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="px-5 py-3">
                       <p className="font-medium text-slate-800">{c.personne.prenoms} {c.personne.nom}</p>
+                      <p className="text-xs text-slate-500">{c.personne.telephone || 'Sans telephone'}</p>
                       <p className="text-xs text-slate-500">{c.personne.email}</p>
                     </td>
                     <td className="px-5 py-3">{c.personne.entite?.libelle || '—'}</td>

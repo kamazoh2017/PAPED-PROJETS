@@ -18,14 +18,48 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+
+    const nom = String(body.nom || '').trim();
+    const prenoms = String(body.prenoms || '').trim();
+    const email = String(body.email || '').trim().toLowerCase();
+    const fonction = String(body.fonction || '').trim();
+    const entiteId = String(body.entiteId || '').trim();
+    const telephone = String(body.telephone || '').replace(/\D/g, '');
+
+    if (!nom || !prenoms || !email || !fonction || !entiteId) {
+      return NextResponse.json({ error: 'Tous les champs obligatoires doivent etre renseignes.' }, { status: 400 });
+    }
+
+    if (telephone.length !== 10) {
+      return NextResponse.json({ error: 'Le numero de telephone doit contenir exactement 10 chiffres.' }, { status: 400 });
+    }
+
+    const existing = await prisma.personneRessource.findFirst({
+      where: {
+        OR: [{ email }, { telephone }],
+      },
+      select: {
+        id: true,
+        email: true,
+        telephone: true,
+      },
+    });
+
+    if (existing) {
+      if (existing.email === email) {
+        return NextResponse.json({ error: 'Une ressource existe deja avec cet email.' }, { status: 409 });
+      }
+      return NextResponse.json({ error: 'Une ressource existe deja avec ce numero de telephone.' }, { status: 409 });
+    }
+
     const personne = await prisma.personneRessource.create({
       data: {
-        nom: body.nom,
-        prenoms: body.prenoms,
-        telephone: body.telephone,
-        email: body.email,
-        fonction: body.fonction,
-        entiteId: body.entiteId,
+        nom,
+        prenoms,
+        telephone,
+        email,
+        fonction,
+        entiteId,
         estChefProjet: body.estChefProjet || false,
       },
       include: {
@@ -33,7 +67,7 @@ export async function POST(request: NextRequest) {
       },
     });
     return NextResponse.json(personne, { status: 201 });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Erreur lors de la création de la personne' }, { status: 500 });
   }
 }

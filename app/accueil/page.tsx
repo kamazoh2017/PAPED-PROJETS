@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 
 export default function AccueilPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -19,7 +19,7 @@ export default function AccueilPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       });
       const data = await res.json();
 
@@ -57,16 +57,17 @@ export default function AccueilPage() {
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 md:p-8">
           <h2 className="text-2xl font-bold text-primary">Authentification</h2>
-          <p className="mt-1 text-sm text-slate-500">Connectez-vous avec votre email/login et votre mot de passe.</p>
+          <p className="mt-1 text-sm text-slate-500">Connectez-vous avec votre numero de telephone (10 chiffres) ou votre email.</p>
 
           <form onSubmit={handleSubmit} className="mt-5 space-y-4">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Email ou login</label>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Telephone (10 chiffres) ou email</label>
               <input
                 type="text"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="Ex: 0701020304 ou user@exemple.com"
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
             </div>

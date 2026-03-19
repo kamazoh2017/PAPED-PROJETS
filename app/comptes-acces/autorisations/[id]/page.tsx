@@ -21,6 +21,7 @@ interface Compte {
   personne: {
     nom: string;
     prenoms: string;
+    telephone?: string;
     email: string;
   };
 }
@@ -123,7 +124,7 @@ export default function AutorisationsComptePage() {
           <h1 className="text-3xl font-bold text-primary">Page autorisation</h1>
           {compte && (
             <p className="mt-1 text-sm text-slate-500">
-              Utilisateur: {compte.personne.prenoms} {compte.personne.nom} ({compte.personne.email})
+              Utilisateur: {compte.personne.prenoms} {compte.personne.nom} ({compte.personne.telephone || 'Sans telephone'} / {compte.personne.email})
             </p>
           )}
         </div>

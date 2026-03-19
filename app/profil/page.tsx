@@ -9,6 +9,7 @@ interface MeResponse {
     email: string;
   } | null;
   email?: string;
+  telephone?: string | null;
   estSuperAdmin?: boolean;
   doitChangerMdp: boolean;
 }
@@ -69,7 +70,7 @@ export default function ProfilPage() {
         {me ? (
           me.personne ? (
             <p className="mt-2 text-sm text-slate-600">
-              {me.personne.prenoms} {me.personne.nom} - {me.personne.email}
+              {me.personne.prenoms} {me.personne.nom} - {me.telephone || 'Sans telephone'} / {me.personne.email}
             </p>
           ) : (
             <p className="mt-2 text-sm text-slate-600">

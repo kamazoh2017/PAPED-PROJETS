@@ -22,6 +22,7 @@ export default function PersonnesPage() {
   const [entites, setEntites] = useState<EntiteOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState('');
   const [formData, setFormData] = useState({
     nom: '',
     prenoms: '',
@@ -75,19 +76,38 @@ export default function PersonnesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
+    const telephone = formData.telephone.replace(/\D/g, '');
+    if (telephone.length !== 10) {
+      setError('Le numero de telephone est obligatoire et doit contenir exactement 10 chiffres.');
+      return;
+    }
+
     try {
       const res = await fetch('/api/personnes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          email: formData.email.trim().toLowerCase(),
+          telephone,
+        }),
       });
+
+      const data = await res.json();
+
       if (res.ok) {
         await fetchPersonnes();
         setFormData({ nom: '', prenoms: '', email: '', fonction: '', telephone: '', entiteId: '' });
         setShowForm(false);
+        setError('');
+      } else {
+        setError(data?.error || 'Erreur lors de la creation de la ressource.');
       }
     } catch (error) {
       console.error('Erreur:', error);
+      setError('Erreur reseau.');
     }
   };
 
@@ -139,11 +159,15 @@ export default function PersonnesPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Téléphone</label>
+              <label className="block text-sm font-medium text-gray-700">Téléphone (10 chiffres) *</label>
               <input
                 type="tel"
+                required
+                inputMode="numeric"
+                pattern="[0-9]{10}"
                 value={formData.telephone}
                 onChange={(e) => setFormData({ ...formData, telephone: e.target.value })}
+                placeholder="Ex: 0701020304"
                 className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
             </div>
@@ -188,6 +212,7 @@ export default function PersonnesPage() {
               Annuler
             </button>
           </div>
+          {error && <p className="text-sm text-red-700">{error}</p>}
         </form>
       )}
 
@@ -201,6 +226,7 @@ export default function PersonnesPage() {
                 <th className="px-6 py-3 text-left">Nom</th>
                 <th className="px-6 py-3 text-left">Prénom</th>
                 <th className="px-6 py-3 text-left">Email</th>
+                <th className="px-6 py-3 text-left">Telephone</th>
                 <th className="px-6 py-3 text-left">Fonction</th>
                 <th className="px-6 py-3 text-left">Entité</th>
               </tr>
@@ -211,6 +237,7 @@ export default function PersonnesPage() {
                   <td className="px-6 py-3">{p.nom}</td>
                   <td className="px-6 py-3">{p.prenoms}</td>
                   <td className="px-6 py-3">{p.email}</td>
+                  <td className="px-6 py-3">{p.telephone || '—'}</td>
                   <td className="px-6 py-3">{p.fonction}</td>
                   <td className="px-6 py-3">{p.entite.libelle}</td>
                 </tr>

@@ -8,19 +8,30 @@ const SESSION_HOURS = 8;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const email = String(body.email || '').trim().toLowerCase();
+    const identifier = String(body.identifier || body.email || '').trim();
+    const email = identifier.toLowerCase();
+    const telephone = identifier.replace(/\D/g, '');
     const password = String(body.password || '');
 
-    if (!email || !password) {
-      return NextResponse.json({ error: 'Email et mot de passe obligatoires.' }, { status: 400 });
+    if (!identifier || !password) {
+      return NextResponse.json(
+        { error: 'Identifiant (telephone ou email) et mot de passe obligatoires.' },
+        { status: 400 }
+      );
+    }
+
+    const whereClauses: Array<Record<string, unknown>> = [
+      { login: email, estSuperAdmin: true },
+      { personne: { email }, estSuperAdmin: false },
+    ];
+
+    if (telephone.length === 10) {
+      whereClauses.push({ personne: { telephone }, estSuperAdmin: false });
     }
 
     const compte = await prisma.compteAcces.findFirst({
       where: {
-        OR: [
-          { login: email, estSuperAdmin: true },
-          { personne: { email }, estSuperAdmin: false },
-        ],
+        OR: whereClauses,
       },
       include: {
         personne: {

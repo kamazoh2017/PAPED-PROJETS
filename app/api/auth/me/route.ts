@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       id: sessionUser.compte.id,
       email: sessionUser.compte.estSuperAdmin ? sessionUser.compte.login : sessionUser.personne?.email,
+      telephone: sessionUser.personne?.telephone || null,
       personne: sessionUser.personne ?? null,
       estSuperAdmin: sessionUser.compte.estSuperAdmin,
       doitChangerMdp: sessionUser.compte.doitChangerMdp,
