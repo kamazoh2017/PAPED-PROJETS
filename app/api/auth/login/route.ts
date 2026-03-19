@@ -72,7 +72,8 @@ export async function POST(request: NextRequest) {
     });
 
     return response;
-  } catch {
+  } catch (err) {
+    console.error('[login] erreur:', err);
     return NextResponse.json({ error: 'Erreur lors de la connexion.' }, { status: 500 });
   }
 }
