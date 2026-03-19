@@ -151,8 +151,9 @@ export default function ProjetDetailPage() {
   const fetchProjet = async () => {
     try {
       const res = await fetch(`/api/projets/${projectId}`);
+      if (!res.ok) return;
       const data = await res.json();
-      setProjet(data);
+      if (data && !data.error) setProjet(data);
     } catch (error) {
       console.error('Erreur:', error);
     } finally {
@@ -199,11 +200,12 @@ export default function ProjetDetailPage() {
   if (!projet) return <div className="text-center py-16 text-slate-400">Projet non trouvé</div>;
 
   // Progression calculations
-  const totalTaches = projet.taches.length;
+  const taches = projet.taches ?? [];
+  const totalTaches = taches.length;
   const previsionnel = totalTaches === 0 ? 0
-    : Math.round(projet.taches.filter(t => t.statut !== 'Backlog').length / totalTaches * 100);
+    : Math.round(taches.filter(t => t.statut !== 'Backlog').length / totalTaches * 100);
   const effectif = totalTaches === 0 ? 0
-    : Math.round(projet.taches.filter(t => t.statut === 'Terminé' || t.statut === 'Validé').length / totalTaches * 100);
+    : Math.round(taches.filter(t => t.statut === 'Terminé' || t.statut === 'Validé').length / totalTaches * 100);
 
   const avancementProjet = getAvanancementProjet(projet.statut, projet.dateDebutPrevisionnelle, projet.dateFinPrevisionnelle);
   const avBadge = avancementProjet ? AVANCEMENT_BADGE[avancementProjet] : null;
@@ -214,10 +216,10 @@ export default function ProjetDetailPage() {
   const entites = Array.from(entiteMap.values());
 
   const tasksByMember = (memberId: string) =>
-    projet.taches.filter(t => t.assigneA?.id === memberId);
+    taches.filter(t => t.assigneA?.id === memberId);
 
   const tasksByColumn = (col: string) =>
-    projet.taches.filter(t => t.statut === col);
+    taches.filter(t => t.statut === col);
 
   const getAvancement = (task: Tache): 'retard' | 'a-jour' | 'en-avance' => {
     const isTerminee = task.statut === 'Terminé' || task.statut === 'Validé';
@@ -581,7 +583,7 @@ export default function ProjetDetailPage() {
 
           {/* Task list table */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            {projet.taches.length === 0 ? (
+            {taches.length === 0 ? (
               <div className="py-14 text-center text-slate-400 text-sm">
                 Aucune tâche créée. Cliquez sur &quot;Nouvelle tâche&quot; pour commencer.
               </div>
@@ -597,7 +599,7 @@ export default function ProjetDetailPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {projet.taches.map(t => (
+                  {taches.map(t => (
                     <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-4">
                         <p className="font-medium text-slate-800">{t.libelle}</p>
@@ -718,7 +720,7 @@ export default function ProjetDetailPage() {
 
       {/* ── TAB: GANTT ── */}
       {activeTab === 'gantt' && (
-        <ProjectGantt tasks={projet.taches} title="Diagramme de Gantt des tâches" />
+        <ProjectGantt tasks={taches} title="Diagramme de Gantt des tâches" />
       )}
     </div>
   );
