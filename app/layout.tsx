@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import Navigation from '@/components/Navigation';
-import PageHeader from '@/components/PageHeader';
+import AppShell from '@/components/AppShell';
 
 export const metadata: Metadata = {
   title: 'PAPE-D Project Tracker',
@@ -14,15 +13,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="fr">
+    <html lang="fr" suppressHydrationWarning>
       <body className="bg-slate-50">
-        <Navigation />
-        <main className="min-h-screen pl-0 pr-4 pt-6 md:pl-[110px]">
-          <div className="mx-auto max-w-7xl">
-            <PageHeader />
-            {children}
-          </div>
-        </main>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
