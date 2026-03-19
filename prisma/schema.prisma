@@ -11,12 +11,14 @@ datasource db {
 }
 
 model Projet {
-  id              String   @id @default(cuid())
-  libelle         String   @unique
-  description     String?
-  statut          String   @default("Demarrage")
-  chefProjetId    String
-  dateCreation    DateTime @default(now())
+  id                      String    @id @default(cuid())
+  libelle                 String    @unique
+  description             String?
+  statut                  String    @default("Demarrage")
+  chefProjetId            String
+  dateCreation            DateTime  @default(now())
+  dateDebutPrevisionnelle DateTime?
+  dateFinPrevisionnelle   DateTime?
 
   chefProjet      PersonneRessource @relation("ProjetChef", fields: [chefProjetId], references: [id])
   equipeProjet    PersonneRessource[] @relation("EquipeProjet")
@@ -55,8 +57,53 @@ model PersonneRessource {
   tachesAssignees         Tache[]                 @relation("TacheAssignee")
   partiesPrenantes        PartiePrenante[]
   tachesPeriodiqueResp    TachePerodique[]        @relation("TachePeriodiqueResponsable")
+  compteAcces             CompteAcces?
 
   @@map("personnes_ressources")
+}
+
+model CompteAcces {
+  id                 String                 @id @default(cuid())
+  login              String?                @unique
+  estSuperAdmin      Boolean                @default(false)
+  personneId         String?                @unique
+  motDePasseHash     String
+  estActif           Boolean                @default(true)
+  doitChangerMdp     Boolean                @default(true)
+  dateCreation       DateTime               @default(now())
+  dateDerniereConnex DateTime?
+
+  personne     PersonneRessource?      @relation(fields: [personneId], references: [id], onDelete: Cascade)
+  permissions  PermissionPageAction[]
+  sessions     SessionAuth[]
+
+  @@map("comptes_acces")
+}
+
+model PermissionPageAction {
+  id         String   @id @default(cuid())
+  compteId   String
+  pageKey    String
+  actionKey  String
+  autorise   Boolean  @default(false)
+  dateMaj    DateTime @updatedAt
+
+  compte CompteAcces @relation(fields: [compteId], references: [id], onDelete: Cascade)
+
+  @@unique([compteId, pageKey, actionKey])
+  @@map("permissions_page_action")
+}
+
+model SessionAuth {
+  id          String   @id @default(cuid())
+  compteId    String
+  token       String   @unique
+  expireLe    DateTime
+  dateCreation DateTime @default(now())
+
+  compte CompteAcces @relation(fields: [compteId], references: [id], onDelete: Cascade)
+
+  @@map("sessions_auth")
 }
 
 model PartiePrenante {

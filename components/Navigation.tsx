@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, FolderKanban, LayoutDashboard, Users } from 'lucide-react';
+import { Building2, FolderKanban, KeyRound, LayoutDashboard, ShieldCheck, Users } from 'lucide-react';
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -22,6 +22,12 @@ export default function Navigation() {
         </NavLink>
         <NavLink href="/entites" active={isActive('/entites')} icon={<Building2 size={16} />}>
           ENTITE
+        </NavLink>
+        <NavLink href="/comptes-acces" active={isActive('/comptes-acces')} icon={<ShieldCheck size={16} />}>
+          COMPTES
+        </NavLink>
+        <NavLink href="/profil" active={isActive('/profil')} icon={<KeyRound size={16} />}>
+          PROFIL
         </NavLink>
       </div>
     </nav>
