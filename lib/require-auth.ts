@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from './auth-session';
+import { auditStorage } from './audit-context';
 
 export type SessionUser = NonNullable<Awaited<ReturnType<typeof getSessionUser>>>;
 
@@ -16,6 +17,11 @@ export async function requireAuth(
 ): Promise<{ user: SessionUser; err: null } | { user: null; err: NextResponse }> {
   const user = await getSessionUser(request);
   if (!user) return { user: null, err: unauthorized() };
+  // Propager l'identité dans le contexte async pour le middleware Prisma
+  auditStorage.enterWith({
+    compteId: user.compte.id,
+    login: user.compte.login ?? undefined,
+  });
   return { user, err: null };
 }
 
