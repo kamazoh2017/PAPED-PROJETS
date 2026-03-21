@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
+import { refreshProjectMetrics } from '@/lib/refresh-project-metrics';
 
 function toOptionalDate(value: unknown): Date | null {
   if (value === null || value === undefined || value === '') return null;
@@ -125,6 +126,9 @@ export async function PUT(
       }
     }
 
+    // Recalcul automatique statut projet + risques
+    await refreshProjectMetrics(oldTache.projetId);
+
     return NextResponse.json(tache);
   } catch (error) {
     return NextResponse.json({ error: 'Erreur lors de la mise à jour de la tâche' }, { status: 500 });
@@ -141,7 +145,16 @@ export async function DELETE(
 
   try {
     const { id } = await params;
+
+    // Récupérer le projetId avant suppression pour le recalcul
+    const tache = await prisma.tache.findUnique({ where: { id }, select: { projetId: true } });
+    if (!tache) return NextResponse.json({ error: 'Tâche introuvable.' }, { status: 404 });
+
     await prisma.tache.delete({ where: { id } });
+
+    // Recalcul automatique statut projet + risques
+    await refreshProjectMetrics(tache.projetId);
+
     return NextResponse.json({ message: 'Tâche supprimée' });
   } catch (error) {
     return NextResponse.json({ error: 'Erreur lors de la suppression de la tâche' }, { status: 500 });

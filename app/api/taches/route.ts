@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
+import { refreshProjectMetrics } from '@/lib/refresh-project-metrics';
 
 function toOptionalDate(value: unknown): Date | null {
   if (value === null || value === undefined || value === '') return null;
@@ -119,6 +120,9 @@ export async function POST(request: NextRequest) {
         });
       }
     }
+
+    // Recalcul automatique statut projet + risques
+    await refreshProjectMetrics(tache.projetId);
 
     return NextResponse.json(tache, { status: 201 });
   } catch (error: any) {
