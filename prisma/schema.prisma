@@ -22,6 +22,10 @@ model Projet {
   dateFinPrevisionnelle   DateTime?
   dateDebutEffective      DateTime?
   dateFinEffective        DateTime?
+  tauxAvancementReel      Float     @default(0)
+  tauxAvancementAttendu   Float     @default(0)
+  tauxAchevementReel      Float     @default(0)
+  tauxAchevementAttendu   Float     @default(0)
 
   chefProjet      PersonneRessource @relation("ProjetChef", fields: [chefProjetId], references: [id])
   equipeProjet    PersonneRessource[] @relation("EquipeProjet")
@@ -147,6 +151,9 @@ model Tache {
   assigneAId              String?
   statut                  String   @default("À planifier")
   etatAvancement          String   @default("a-lheure")
+  progression             Int      @default(0)
+  poidsPriorite           Int      @default(1)
+  motifDesassignation     String?
   dateCreation            DateTime @default(now())
   dateDebutPrevisionnelle DateTime?
   dateDebutEffective      DateTime?
