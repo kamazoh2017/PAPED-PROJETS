@@ -9,7 +9,8 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// ─── Logique de calcul (miroir de lib/project-metrics.ts) ──────────────────
+// ─── Logique de calcul (miroir de lib/project-metrics.ts) ───────────────────
+// Inclut : statut auto, etatAvancement projet, etatAvancement tâche, risques
 
 function isTaskDone(statut) {
   const s = String(statut ?? '').trim().toLowerCase();
@@ -126,6 +127,43 @@ function getRiskColor(score) {
   return 'Rouge';
 }
 
+function isTaskDoneStr(statut) {
+  const s = String(statut ?? '').trim().toLowerCase();
+  return s === 'terminé' || s === 'termine' || s === 'validé' || s === 'valide';
+}
+
+function computeTaskAvancement(task, nowTs) {
+  const isDone = isTaskDoneStr(task.statut);
+  const finPrev = parseMetricsDate(task.dateFinPrevisionnelle);
+  const debutPrev = parseMetricsDate(task.dateDebutPrevisionnelle);
+  const finEff = parseMetricsDate(task.dateFinEffective);
+
+  if (isDone && finPrev !== null && finEff !== null && finEff > finPrev) return 'hors-delai';
+  if (!isDone && finPrev !== null && nowTs > finPrev) return 'hors-delai';
+  if (isDone) return 'en-avance';
+  if (!isDone && debutPrev !== null && nowTs > debutPrev) return 'retard';
+  return 'a-lheure';
+}
+
+function computeProjectAvancement(project, tasks, nowTs) {
+  const finPrev = parseMetricsDate(project.dateFinPrevisionnelle);
+  const explicitFinEff = parseMetricsDate(project.dateFinEffective);
+  const taskFinEff = tasks
+    .map(t => parseMetricsDate(t.dateFinEffective))
+    .filter(ts => ts !== null)
+    .sort((a, b) => b - a)[0] ?? null;
+  const finEff = explicitFinEff ?? taskFinEff;
+
+  if (finPrev !== null && finEff !== null && finEff > finPrev) return 'hors-delai';
+
+  const real = getWeightedProgression(tasks);
+  const expected = getExpectedProgress(project, nowTs);
+  const delta = real - expected;
+  if (delta > 5) return 'en-avance';
+  if (delta < -5) return 'retard';
+  return 'a-lheure';
+}
+
 // ─── Script principal ────────────────────────────────────────────────────────
 
 async function main() {
@@ -146,23 +184,48 @@ async function main() {
   const now = Date.now();
   let statutsModifies = 0;
   let risquesUpserted = 0;
+  let avancementsModifies = 0;
 
   for (const projet of projets) {
     const tasks = await prisma.tache.findMany({
       where: { projetId: projet.id },
-      select: { statut: true, priorite: true, dateFinPrevisionnelle: true, dateFinEffective: true },
+      select: {
+        id: true,
+        statut: true,
+        priorite: true,
+        dateDebutPrevisionnelle: true,
+        dateDebutEffective: true,
+        dateFinPrevisionnelle: true,
+        dateFinEffective: true,
+      },
     });
 
-    // 1. Statut
-    const newStatut = computeProjectStatut(tasks, projet.statut);
-    const statutLabel = newStatut ? `${projet.statut} → ${newStatut}` : `${projet.statut} (inchangé)`;
-
-    if (newStatut && newStatut !== projet.statut) {
-      await prisma.projet.update({ where: { id: projet.id }, data: { statut: newStatut } });
-      statutsModifies++;
+    // 1. etatAvancement de chaque tâche
+    for (const t of tasks) {
+      const ea = computeTaskAvancement(t, now);
+      await prisma.tache.update({ where: { id: t.id }, data: { etatAvancement: ea } });
     }
+    avancementsModifies += tasks.length;
 
-    // 2. Risques
+    // 2. Statut projet
+    const newStatut = computeProjectStatut(tasks, projet.statut);
+    const statutLabel = newStatut && newStatut !== projet.statut
+      ? `${projet.statut} → ${newStatut}`
+      : `${projet.statut} (inchangé)`;
+    if (newStatut && newStatut !== projet.statut) statutsModifies++;
+
+    // 3. etatAvancement projet
+    const etatAvancement = computeProjectAvancement(projet, tasks, now);
+
+    await prisma.projet.update({
+      where: { id: projet.id },
+      data: {
+        ...(newStatut && newStatut !== projet.statut ? { statut: newStatut } : {}),
+        etatAvancement,
+      },
+    });
+
+    // 4. Risques
     const risks = computeRiskScores(projet, tasks, now);
     const entries = [
       { libelle: 'retard',      taux: risks.retard },
@@ -190,15 +253,16 @@ async function main() {
     const shortName = projet.libelle.length > 60 ? projet.libelle.slice(0, 60) + '…' : projet.libelle;
     const icon = newStatut && newStatut !== projet.statut ? '✅' : '⏭️ ';
     console.log(`${icon} [${tasks.length} tâches] ${shortName}`);
-    console.log(`   Statut : ${statutLabel} | Risque global : ${risks.global}% (${getRiskLevel(risks.global)})`);
+    console.log(`   Statut : ${statutLabel} | Avancement : ${etatAvancement} | Risque global : ${risks.global}% (${getRiskLevel(risks.global)})`);
   }
 
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✅ Recalcul terminé.
-   Projets traités     : ${projets.length}
-   Statuts corrigés    : ${statutsModifies}
-   Risques mis à jour  : ${risquesUpserted}
+   Projets traités          : ${projets.length}
+   Statuts corrigés         : ${statutsModifies}
+   Avancements mis à jour   : ${avancementsModifies} tâches + ${projets.length} projets
+   Risques mis à jour       : ${risquesUpserted}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 }
 

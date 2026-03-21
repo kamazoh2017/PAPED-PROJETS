@@ -1,17 +1,20 @@
 /**
- * Helper serveur : recalcule et persiste le statut + les risques d'un projet
- * après toute modification de ses tâches (create / update / delete).
+ * Helper serveur : recalcule et persiste le statut, etatAvancement et risques
+ * d'un projet après toute modification de ses tâches (create / update / delete).
  *
  * Appelé dans les API routes tâches — JAMAIS côté client.
  */
 
 import { prisma } from '@/lib/prisma';
 import {
+  computeAvancement,
   computeProjectStatut,
   computeRiskScores,
+  computeTaskAvancement,
   getRiskColor,
   getRiskLevel,
   TaskMetrics,
+  TaskWithDates,
 } from '@/lib/project-metrics';
 
 export async function refreshProjectMetrics(projetId: string): Promise<void> {
@@ -30,12 +33,17 @@ export async function refreshProjectMetrics(projetId: string): Promise<void> {
   const tasks = await prisma.tache.findMany({
     where: { projetId },
     select: {
+      id: true,
       statut: true,
       priorite: true,
+      dateDebutPrevisionnelle: true,
+      dateDebutEffective: true,
       dateFinPrevisionnelle: true,
       dateFinEffective: true,
     },
   });
+
+  const now = Date.now();
 
   const taskMetrics: TaskMetrics[] = tasks.map((t) => ({
     statut: t.statut,
@@ -44,16 +52,39 @@ export async function refreshProjectMetrics(projetId: string): Promise<void> {
     dateFinEffective: t.dateFinEffective,
   }));
 
-  // ── 1. Mise à jour automatique du statut projet ───────────────────────────
-  const newStatut = computeProjectStatut(taskMetrics, project.statut);
-  if (newStatut && newStatut !== project.statut) {
-    await prisma.projet.update({ where: { id: projetId }, data: { statut: newStatut } });
+  // ── 1. etatAvancement de chaque tâche ────────────────────────────────────
+  for (const t of tasks) {
+    const taskWithDates: TaskWithDates = {
+      statut: t.statut,
+      priorite: t.priorite,
+      dateDebutPrevisionnelle: t.dateDebutPrevisionnelle,
+      dateDebutEffective: t.dateDebutEffective,
+      dateFinPrevisionnelle: t.dateFinPrevisionnelle,
+      dateFinEffective: t.dateFinEffective,
+    };
+    const etatAvancement = computeTaskAvancement(taskWithDates, now);
+    await prisma.tache.update({
+      where: { id: t.id },
+      data: { etatAvancement },
+    });
   }
 
-  // ── 2. Recalcul et upsert des scores de risque ────────────────────────────
-  const now = Date.now();
-  const risks = computeRiskScores(project, taskMetrics, now);
+  // ── 2. Statut auto du projet ──────────────────────────────────────────────
+  const newStatut = computeProjectStatut(taskMetrics, project.statut);
 
+  // ── 3. etatAvancement du projet ───────────────────────────────────────────
+  const etatAvancement = computeAvancement(project, taskMetrics, now);
+
+  await prisma.projet.update({
+    where: { id: projetId },
+    data: {
+      ...(newStatut && newStatut !== project.statut ? { statut: newStatut } : {}),
+      etatAvancement,
+    },
+  });
+
+  // ── 4. Scores de risque ───────────────────────────────────────────────────
+  const risks = computeRiskScores(project, taskMetrics, now);
   const entries = [
     { libelle: 'retard',      taux: risks.retard },
     { libelle: 'horsDelai',   taux: risks.horsDelai },

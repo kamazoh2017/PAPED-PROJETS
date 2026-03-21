@@ -15,6 +15,7 @@ model Projet {
   libelle                 String    @unique
   description             String?
   statut                  String    @default("En démarrage")
+  etatAvancement          String    @default("a-lheure")
   chefProjetId            String
   dateCreation            DateTime  @default(now())
   dateDebutPrevisionnelle DateTime?
@@ -145,6 +146,7 @@ model Tache {
   priorite                String   @default("Critique")
   assigneAId              String?
   statut                  String   @default("À planifier")
+  etatAvancement          String   @default("a-lheure")
   dateCreation            DateTime @default(now())
   dateDebutPrevisionnelle DateTime?
   dateDebutEffective      DateTime?

@@ -117,6 +117,42 @@ export function computeAvancement(project: ProjectForMetrics, tasks: TaskMetrics
   return 'a-lheure';
 }
 
+// ─── Avancement d'une tâche individuelle ─────────────────────────────────────
+
+export interface TaskWithDates extends TaskMetrics {
+  dateDebutPrevisionnelle?: Date | string | null;
+  dateDebutEffective?: Date | string | null;
+}
+
+/**
+ * Calcule l'état d'avancement d'une tâche individuelle.
+ * - hors-delai : non terminée ET dateFinPrevisionnelle dépassée
+ *                OU terminée après la dateFinPrevisionnelle
+ * - en-avance  : terminée dans les délais (finEff <= finPrev ou pas de finPrev)
+ * - retard     : non terminée ET dateDebutPrevisionnelle dépassée ET dans les délais
+ * - a-lheure   : pas encore débutée ou dans les délais
+ */
+export function computeTaskAvancement(task: TaskWithDates, nowTs: number): Avancement {
+  const isDone = isTaskDone(task.statut);
+  const finPrev = parseMetricsDate(task.dateFinPrevisionnelle);
+  const debutPrev = parseMetricsDate(task.dateDebutPrevisionnelle);
+  const finEff = parseMetricsDate(task.dateFinEffective);
+
+  // Terminée après la date prévue → hors-délai
+  if (isDone && finPrev !== null && finEff !== null && finEff > finPrev) return 'hors-delai';
+
+  // Non terminée et date de fin dépassée → hors-délai
+  if (!isDone && finPrev !== null && nowTs > finPrev) return 'hors-delai';
+
+  // Terminée dans les délais → en avance
+  if (isDone) return 'en-avance';
+
+  // Non terminée, date de début dépassée → en retard
+  if (!isDone && debutPrev !== null && nowTs > debutPrev) return 'retard';
+
+  return 'a-lheure';
+}
+
 // ─── Scores de risque ────────────────────────────────────────────────────────
 
 export interface RiskScores {
