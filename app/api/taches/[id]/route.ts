@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
 import { refreshProjectMetrics } from '@/lib/refresh-project-metrics';
+import { getTaskProgression, getPriorityWeight } from '@/lib/project-metrics';
 
 function toOptionalDate(value: unknown): Date | null {
   if (value === null || value === undefined || value === '') return null;
@@ -44,15 +45,24 @@ export async function PUT(
       return NextResponse.json({ error: 'Tâche introuvable.' }, { status: 404 });
     }
 
+    const prioriteNorm = body.priorite === undefined ? undefined : normalizePriority(body.priorite);
     const updates: Record<string, unknown> = {
-      libelle: body.libelle,
-      description: body.description,
-      priorite: body.priorite === undefined ? undefined : normalizePriority(body.priorite),
-      assigneAId: body.assigneAId,
-      statut: body.statut,
-      dateDebutPrevisionnelle: toOptionalDate(body.dateDebutPrevisionnelle),
-      dateFinPrevisionnelle: toOptionalDate(body.dateFinPrevisionnelle),
+      libelle:                  body.libelle,
+      description:              body.description,
+      priorite:                 prioriteNorm,
+      assigneAId:               body.assigneAId,
+      statut:                   body.statut,
+      dateDebutPrevisionnelle:  toOptionalDate(body.dateDebutPrevisionnelle),
+      dateFinPrevisionnelle:    toOptionalDate(body.dateFinPrevisionnelle),
     };
+
+    // Recalcul immédiat de progression et poidsPriorite
+    if (body.statut !== undefined) {
+      updates.progression = getTaskProgression(body.statut);
+    }
+    if (prioriteNorm !== undefined) {
+      updates.poidsPriorite = getPriorityWeight(prioriteNorm);
+    }
 
     // Remplir automatiquement les dates effectives
     if (body.statut === 'En cours' && body.dateDebutEffective === undefined) {

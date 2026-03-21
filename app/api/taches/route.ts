@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
 import { refreshProjectMetrics } from '@/lib/refresh-project-metrics';
+import { getTaskProgression, getPriorityWeight } from '@/lib/project-metrics';
 
 function toOptionalDate(value: unknown): Date | null {
   if (value === null || value === undefined || value === '') return null;
@@ -83,14 +84,17 @@ export async function POST(request: NextRequest) {
       statut = (assigneAId && dateDebut && dateFin) ? 'A faire' : 'À planifier';
     }
 
+    const prioriteNorm = normalizePriority(body.priorite);
     const tache = await prisma.tache.create({
       data: {
         projetId: body.projetId,
         libelle: body.libelle,
         description: body.description,
-        priorite: normalizePriority(body.priorite),
+        priorite: prioriteNorm,
         assigneAId,
         statut,
+        progression:   getTaskProgression(statut),
+        poidsPriorite: getPriorityWeight(prioriteNorm),
         dateDebutPrevisionnelle: dateDebut,
         dateFinPrevisionnelle: dateFin,
       },
