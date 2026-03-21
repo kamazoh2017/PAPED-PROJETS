@@ -247,7 +247,9 @@ export default function ProjetsPage() {
               className="bg-white shadow-md rounded-lg p-6 hover:shadow-lg hover:border-primary border border-transparent transition cursor-pointer"
             >
               <h2 className="text-xl font-semibold text-primary mb-2">{projet.libelle}</h2>
-              <p className="text-gray-600 mb-4">{projet.description || 'Pas de description'}</p>
+              {projet.description && (
+                <p className="text-gray-600 text-sm mb-4 line-clamp-2">{projet.description}</p>
+              )}
               <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
                 <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-medium">
                   {projet.statut}
