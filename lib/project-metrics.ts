@@ -42,16 +42,26 @@ export function isTaskDone(statut: string): boolean {
   return s === 'terminé' || s === 'termine' || s === 'validé' || s === 'valide';
 }
 
-function getTaskProgression(statut: string): number {
+/**
+ * Progression d'une tâche selon son statut (valeur stockée dans tache.progression).
+ * À planifier / À faire → 0 | En cours → 50 | En attente → 40
+ * Terminé → 90 | Validé → 100
+ */
+export function getTaskProgression(statut: string): number {
   const s = String(statut ?? '').trim().toLowerCase();
   if (s === 'à planifier' || s === 'a planifier' || s === 'a faire' || s === 'à faire') return 0;
-  if (s === 'en cours' || s === 'en attente') return 50;
-  if (s === 'terminé' || s === 'termine') return 99;
+  if (s === 'en cours') return 50;
+  if (s === 'en attente') return 40;
+  if (s === 'terminé' || s === 'termine') return 90;
   if (s === 'validé' || s === 'valide') return 100;
   return 0;
 }
 
-function getPriorityWeight(priorite: string): number {
+/**
+ * Poids de priorité d'une tâche (valeur stockée dans tache.poidsPriorite).
+ * Bloquant → 3 | Critique → 2 | Normal → 1
+ */
+export function getPriorityWeight(priorite: string): number {
   const n = normalizePriorityKey(priorite);
   if (n === 'Bloquant') return 3;
   if (n === 'Critique') return 2;
@@ -243,4 +253,44 @@ export function getRiskColor(score: number): RiskColor {
   if (score <= 50) return 'Jaune';
   if (score <= 75) return 'Orange';
   return 'Rouge';
+}
+
+// ─── Taux d'avancement et d'achèvement ──────────────────────────────────────
+
+/**
+ * Taux d'avancement réel (effectif) : moyenne pondérée de progression × poidsPriorite.
+ * Alias de getWeightedProgression, retourne 0–100.
+ */
+export function computeTauxAvancementReel(tasks: TaskMetrics[]): number {
+  return getWeightedProgression(tasks);
+}
+
+/**
+ * Taux d'avancement attendu (prévisionnel) : % du temps écoulé sur la durée totale du projet.
+ * Alias de getExpectedProgress, retourne 0–100.
+ */
+export function computeTauxAvancementAttendu(project: ProjectForMetrics, nowTs: number): number {
+  return getExpectedProgress(project, nowTs);
+}
+
+/**
+ * Taux d'achèvement réel (effectif) : % de tâches Terminées ou Validées sur le total.
+ */
+export function computeTauxAchevementReel(tasks: TaskMetrics[]): number {
+  if (!tasks.length) return 0;
+  const done = tasks.filter((t) => isTaskDone(t.statut)).length;
+  return Math.round((done / tasks.length) * 100);
+}
+
+/**
+ * Taux d'achèvement attendu (prévisionnel) : % de tâches dont la dateFinPrevisionnelle
+ * est déjà passée (elles auraient dû être terminées à ce stade).
+ */
+export function computeTauxAchevementAttendu(tasks: TaskMetrics[], nowTs: number): number {
+  if (!tasks.length) return 0;
+  const due = tasks.filter((t) => {
+    const fp = parseMetricsDate(t.dateFinPrevisionnelle);
+    return fp !== null && nowTs >= fp;
+  }).length;
+  return Math.round((due / tasks.length) * 100);
 }

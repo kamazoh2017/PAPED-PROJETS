@@ -11,6 +11,12 @@ import {
   computeProjectStatut,
   computeRiskScores,
   computeTaskAvancement,
+  computeTauxAvancementReel,
+  computeTauxAvancementAttendu,
+  computeTauxAchevementReel,
+  computeTauxAchevementAttendu,
+  getTaskProgression,
+  getPriorityWeight,
   getRiskColor,
   getRiskLevel,
   TaskMetrics,
@@ -52,7 +58,7 @@ export async function refreshProjectMetrics(projetId: string): Promise<void> {
     dateFinEffective: t.dateFinEffective,
   }));
 
-  // ── 1. etatAvancement de chaque tâche ────────────────────────────────────
+  // ── 1. etatAvancement, progression et poidsPriorite de chaque tâche ──────
   for (const t of tasks) {
     const taskWithDates: TaskWithDates = {
       statut: t.statut,
@@ -63,9 +69,11 @@ export async function refreshProjectMetrics(projetId: string): Promise<void> {
       dateFinEffective: t.dateFinEffective,
     };
     const etatAvancement = computeTaskAvancement(taskWithDates, now);
+    const progression    = getTaskProgression(t.statut);
+    const poidsPriorite  = getPriorityWeight(t.priorite);
     await prisma.tache.update({
       where: { id: t.id },
-      data: { etatAvancement },
+      data: { etatAvancement, progression, poidsPriorite },
     });
   }
 
@@ -75,11 +83,20 @@ export async function refreshProjectMetrics(projetId: string): Promise<void> {
   // ── 3. etatAvancement du projet ───────────────────────────────────────────
   const etatAvancement = computeAvancement(project, taskMetrics, now);
 
+  const tauxAvancementReel    = computeTauxAvancementReel(taskMetrics);
+  const tauxAvancementAttendu = computeTauxAvancementAttendu(project, now);
+  const tauxAchevementReel    = computeTauxAchevementReel(taskMetrics);
+  const tauxAchevementAttendu = computeTauxAchevementAttendu(taskMetrics, now);
+
   await prisma.projet.update({
     where: { id: projetId },
     data: {
       ...(newStatut && newStatut !== project.statut ? { statut: newStatut } : {}),
       etatAvancement,
+      tauxAvancementReel,
+      tauxAvancementAttendu,
+      tauxAchevementReel,
+      tauxAchevementAttendu,
     },
   });
 
