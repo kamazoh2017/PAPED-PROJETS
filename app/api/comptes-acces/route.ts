@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { DEFAULT_PASSWORD, hashPassword } from '@/lib/auth-security';
+import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { user, err } = await requireAuth(request);
+  if (err) return err;
+  if (!canDo(user, 'comptes-acces', 'view')) return forbidden();
+
   try {
     const comptes = await prisma.compteAcces.findMany({
         where: { estSuperAdmin: false },
@@ -24,6 +29,10 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const { user, err } = await requireAuth(request);
+  if (err) return err;
+  if (!canDo(user, 'comptes-acces', 'create')) return forbidden();
+
   try {
     const body = await request.json();
     const personneId = String(body.personneId || '').trim();

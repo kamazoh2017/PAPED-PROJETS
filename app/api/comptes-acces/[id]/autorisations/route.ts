@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { PERMISSIONS_CATALOG } from '@/lib/permissions-catalog';
+import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function GET(_: NextRequest, { params }: Params) {
+export async function GET(request: NextRequest, { params }: Params) {
+  const { user, err } = await requireAuth(request);
+  if (err) return err;
+  if (!canDo(user, 'comptes-acces', 'view')) return forbidden();
+
   try {
     const { id } = await params;
 
@@ -42,6 +47,10 @@ export async function GET(_: NextRequest, { params }: Params) {
 }
 
 export async function PUT(request: NextRequest, { params }: Params) {
+  const { user, err } = await requireAuth(request);
+  if (err) return err;
+  if (!canDo(user, 'comptes-acces', 'manage-authz')) return forbidden();
+
   try {
     const { id } = await params;
     const body = await request.json();

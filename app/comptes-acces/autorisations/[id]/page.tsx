@@ -68,6 +68,7 @@ export default function AutorisationsComptePage() {
     () => pages.reduce((acc, page) => acc + page.actions.filter((a) => a.autorise).length, 0),
     [pages]
   );
+  const allChecked = totalActions > 0 && totalAutorisees === totalActions;
 
   const toggleAction = (pageKey: string, actionKey: string) => {
     setPages((prev) =>
@@ -81,6 +82,15 @@ export default function AutorisationsComptePage() {
               ),
             }
       )
+    );
+  };
+
+  const toggleAllActions = () => {
+    setPages((prev) =>
+      prev.map((page) => ({
+        ...page,
+        actions: page.actions.map((action) => ({ ...action, autorise: !allChecked })),
+      }))
     );
   };
 
@@ -137,9 +147,19 @@ export default function AutorisationsComptePage() {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p className="text-sm text-slate-600">
-          Actions autorisees: <strong>{totalAutorisees}</strong> / {totalActions}
-        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-slate-600">
+            Actions autorisees: <strong>{totalAutorisees}</strong> / {totalActions}
+          </p>
+          <button
+            type="button"
+            onClick={toggleAllActions}
+            disabled={totalActions === 0}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {allChecked ? 'Tout decocher' : 'Tout cocher'}
+          </button>
+        </div>
       </div>
 
       <div className="space-y-4">

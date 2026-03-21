@@ -105,12 +105,6 @@ export default function ComptesAccesPage() {
             Creer des comptes pour les ressources, puis definir les autorisations par page et action.
           </p>
         </div>
-        <Link
-          href="/connexion"
-          className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-        >
-          Tester la connexion
-        </Link>
       </div>
 
       <form onSubmit={handleCreate} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

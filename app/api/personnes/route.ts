@@ -1,7 +1,12 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { user, err } = await requireAuth(request);
+  if (err) return err;
+  if (!canDo(user, 'personnes', 'view')) return forbidden();
+
   try {
     const personnes = await prisma.personneRessource.findMany({
       include: {
@@ -16,6 +21,10 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const { user, err } = await requireAuth(request);
+  if (err) return err;
+  if (!canDo(user, 'personnes', 'create')) return forbidden();
+
   try {
     const body = await request.json();
 

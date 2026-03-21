@@ -24,33 +24,41 @@ interface Personne {
   estChefProjet?: boolean;
 }
 
-type Avancement = 'retard' | 'a-jour' | 'en-avance';
+type Avancement = 'retard' | 'en-avance' | 'hors-delai';
 
 const AVANCEMENT_CONFIG: Record<Avancement, { label: string; classes: string }> = {
-  retard:      { label: 'En retard',  classes: 'bg-red-100 text-red-700' },
-  'a-jour':    { label: 'À jour',     classes: 'bg-blue-100 text-blue-700' },
-  'en-avance': { label: 'En avance',  classes: 'bg-green-100 text-green-700' },
+  retard:       { label: 'En retard',  classes: 'bg-red-100 text-red-700' },
+  'en-avance':  { label: 'En avance',  classes: 'bg-green-100 text-green-700' },
+  'hors-delai': { label: 'Hors délai', classes: 'bg-orange-100 text-orange-700' },
 };
 
-function getAvanancementProjet(statut: string, dateDebutPrev?: string, dateFinPrev?: string): Avancement | null {
-  const STATUTS_TERMINAUX = ['Terminé', 'Réceptionné', 'Clôturé'];
-  const STATUTS_ACTIFS = ['Demarrage', 'En cours'];
-  if (!STATUTS_ACTIFS.includes(statut) && !STATUTS_TERMINAUX.includes(statut)) return null;
+function getAvanancementProjet(projet: Projet): Avancement | null {
+  const STATUTS_ACTIFS = ['En démarrage', 'En cours'];
+  if (!STATUTS_ACTIFS.includes(projet.statut)) return null;
 
   const now = Date.now();
-  const fin = dateFinPrev ? new Date(dateFinPrev).getTime() : null;
-  const debut = dateDebutPrev ? new Date(dateDebutPrev).getTime() : null;
+  const fin = projet.dateFinPrevisionnelle ? new Date(projet.dateFinPrevisionnelle).getTime() : null;
+  const tasks = projet.taches ?? [];
+  const totalTasks = tasks.length;
 
-  if (STATUTS_TERMINAUX.includes(statut)) {
-    // En avance : le projet est clôturé et la date de fin prévisionnelle n'est pas encore dépassée
-    if (fin && fin > now) return 'en-avance';
-    return 'a-jour';
+  // Si la date prévisionnelle de fin est dépassée
+  if (fin && fin <= now) {
+    if (totalTasks === 0) return 'hors-delai';
+    const doneTasks = tasks.filter((t: any) => t.statut === 'Terminé' || t.statut === 'Validé').length;
+    return doneTasks < totalTasks ? 'hors-delai' : 'en-avance';
   }
 
-  // Projet non terminal
-  if (fin && fin < now) return 'retard';
-  if (debut && debut < now && statut === 'Demarrage') return 'retard';
-  return 'a-jour';
+  // Date non dépassée — comparer taux effectif vs taux prévisionnel
+  if (totalTasks === 0) return 'en-avance';
+  const doneTasks = tasks.filter((t: any) => t.statut === 'Terminé' || t.statut === 'Validé').length;
+  const tauxEffectif = doneTasks / totalTasks;
+  const tasksDuByNow = tasks.filter((t: any) => {
+    const fp = t.dateFinPrevisionnelle ? new Date(t.dateFinPrevisionnelle).getTime() : null;
+    return fp !== null && fp <= now;
+  }).length;
+  const tauxPrevisionnel = tasksDuByNow / totalTasks;
+
+  return tauxEffectif < tauxPrevisionnel ? 'retard' : 'en-avance';
 }
 
 export default function ProjetsPage() {
@@ -230,7 +238,7 @@ export default function ProjetsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {projets.map((projet) => {
-            const avancement = getAvanancementProjet(projet.statut, projet.dateDebutPrevisionnelle, projet.dateFinPrevisionnelle);
+            const avancement = getAvanancementProjet(projet);
             const avCfg = avancement ? AVANCEMENT_CONFIG[avancement] : null;
             return (
             <Link

@@ -52,9 +52,6 @@ export default function ProjectGantt({ tasks, title }: ProjectGanttProps) {
         return 'bg-green-500';
       case 'En cours':
         return 'bg-blue-500';
-      case 'Bloque':
-      case 'Bloqué':
-        return 'bg-red-500';
       default:
         return 'bg-gray-400';
     }

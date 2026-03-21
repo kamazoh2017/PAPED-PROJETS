@@ -14,16 +14,20 @@ model Projet {
   id                      String    @id @default(cuid())
   libelle                 String    @unique
   description             String?
-  statut                  String    @default("Demarrage")
+  statut                  String    @default("En démarrage")
   chefProjetId            String
   dateCreation            DateTime  @default(now())
   dateDebutPrevisionnelle DateTime?
   dateFinPrevisionnelle   DateTime?
+  dateDebutEffective      DateTime?
+  dateFinEffective        DateTime?
 
   chefProjet      PersonneRessource @relation("ProjetChef", fields: [chefProjetId], references: [id])
   equipeProjet    PersonneRessource[] @relation("EquipeProjet")
-  taches          Tache[]
+  taches           Tache[]
   partiesPrenantes PartiePrenanteProjets[]
+  risques          RisqueProjet[]
+  activitesTaches  ActiviteTache[]
 
   @@map("projets")
 }
@@ -73,9 +77,11 @@ model CompteAcces {
   dateCreation       DateTime               @default(now())
   dateDerniereConnex DateTime?
 
-  personne     PersonneRessource?      @relation(fields: [personneId], references: [id], onDelete: Cascade)
-  permissions  PermissionPageAction[]
-  sessions     SessionAuth[]
+  personne           PersonneRessource?      @relation(fields: [personneId], references: [id], onDelete: Cascade)
+  permissions        PermissionPageAction[]
+  sessions           SessionAuth[]
+  commentairesTaches CommentaireTache[]
+  activitesTaches    ActiviteTache[]
 
   @@map("comptes_acces")
 }
@@ -136,9 +142,9 @@ model Tache {
   projetId                String
   libelle                 String
   description             String?
-  priorite                String   @default("Moyenne")
+  priorite                String   @default("Critique")
   assigneAId              String?
-  statut                  String   @default("Backlog")
+  statut                  String   @default("À planifier")
   dateCreation            DateTime @default(now())
   dateDebutPrevisionnelle DateTime?
   dateDebutEffective      DateTime?
@@ -146,10 +152,58 @@ model Tache {
   dateFinEffective        DateTime?
   ordre                   Int      @default(0)
 
-  projet   Projet              @relation(fields: [projetId], references: [id], onDelete: Cascade)
-  assigneA PersonneRessource?  @relation("TacheAssignee", fields: [assigneAId], references: [id], onDelete: SetNull)
+  projet       Projet              @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  assigneA     PersonneRessource?  @relation("TacheAssignee", fields: [assigneAId], references: [id], onDelete: SetNull)
+  commentaires    CommentaireTache[]
+  activites       ActiviteTache[]
 
   @@map("taches")
+}
+
+model CommentaireTache {
+  id            String   @id @default(cuid())
+  tacheId       String
+  compteAccesId String
+  contenu       String
+  dateCreation  DateTime @default(now())
+  parentId      String?
+
+  tache       Tache             @relation(fields: [tacheId], references: [id], onDelete: Cascade)
+  compteAcces CompteAcces       @relation(fields: [compteAccesId], references: [id], onDelete: Cascade)
+  parent      CommentaireTache? @relation("Replies", fields: [parentId], references: [id], onDelete: SetNull)
+  reponses    CommentaireTache[] @relation("Replies")
+
+  @@map("commentaires_taches")
+}
+
+model RisqueProjet {
+  id       String @id @default(cuid())
+  projetId String
+  libelle  String
+  taux     Float  @default(0)
+  gravite  String @default("Faible")
+  couleur  String @default("Vert")
+
+  projet Projet @relation(fields: [projetId], references: [id], onDelete: Cascade)
+
+  @@unique([projetId, libelle])
+  @@map("risques_projets")
+}
+
+model ActiviteTache {
+  id           String   @id @default(cuid())
+  tacheId      String
+  projetId     String
+  type         String
+  detail       String   @default("{}")
+  compteId     String?
+  dateCreation DateTime @default(now())
+
+  tache  Tache        @relation(fields: [tacheId], references: [id], onDelete: Cascade)
+  projet Projet       @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  compte CompteAcces? @relation(fields: [compteId], references: [id], onDelete: SetNull)
+
+  @@map("activites_taches")
 }
 
 model TachePerodique {

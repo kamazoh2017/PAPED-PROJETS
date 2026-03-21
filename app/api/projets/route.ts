@@ -1,7 +1,12 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { user, err } = await requireAuth(request);
+  if (err) return err;
+  if (!canDo(user, 'projets', 'view')) return forbidden();
+
   try {
     const projets = await prisma.projet.findMany({
       include: {
@@ -19,6 +24,10 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const { user, err } = await requireAuth(request);
+  if (err) return err;
+  if (!canDo(user, 'projets', 'create')) return forbidden();
+
   try {
     const body = await request.json();
 
@@ -45,7 +54,7 @@ export async function POST(request: NextRequest) {
       data: {
         libelle: body.libelle,
         description: body.description,
-        statut: body.statut || 'Demarrage',
+        statut: body.statut || 'En démarrage',
         chefProjetId: body.chefProjetId,
         dateDebutPrevisionnelle: body.dateDebutPrevisionnelle ? new Date(body.dateDebutPrevisionnelle) : null,
         dateFinPrevisionnelle: body.dateFinPrevisionnelle ? new Date(body.dateFinPrevisionnelle) : null,

@@ -15,6 +15,7 @@ export async function getSessionUser(request: NextRequest) {
           personne: {
             include: { entite: true },
           },
+          permissions: true,
         },
       },
     },

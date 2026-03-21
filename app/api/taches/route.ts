@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
 
 function toOptionalDate(value: unknown): Date | null {
   if (value === null || value === undefined || value === '') return null;
@@ -7,7 +8,19 @@ function toOptionalDate(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export async function GET() {
+function normalizePriority(value: unknown): string {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (raw === 'haute' || raw === 'high' || raw === 'bloquant') return 'Bloquant';
+  if (raw === 'moyenne' || raw === 'moyen' || raw === 'medium' || raw === 'critique') return 'Critique';
+  if (raw === 'basse' || raw === 'faible' || raw === 'low' || raw === 'normal') return 'Normal';
+  return 'Critique';
+}
+
+export async function GET(request: NextRequest) {
+  const { user, err } = await requireAuth(request);
+  if (err) return err;
+  if (!canDo(user, 'projets', 'view')) return forbidden();
+
   try {
     const taches = await prisma.tache.findMany({
       include: {
@@ -23,6 +36,10 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const { user, err } = await requireAuth(request);
+  if (err) return err;
+  if (!canDo(user, 'detail-projet', 'manage-backlog')) return forbidden();
+
   try {
     const body = await request.json();
 
@@ -57,11 +74,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    let statut = body.statut || 'Backlog';
+    const dateDebut = toOptionalDate(body.dateDebutPrevisionnelle);
+    const dateFin = toOptionalDate(body.dateFinPrevisionnelle);
 
-    // Si assigné à quelqu'un, passe à "À faire"
-    if (assigneAId && !body.statut) {
-      statut = 'A faire';
+    let statut = body.statut;
+    if (!statut) {
+      statut = (assigneAId && dateDebut && dateFin) ? 'A faire' : 'À planifier';
     }
 
     const tache = await prisma.tache.create({
@@ -69,11 +87,11 @@ export async function POST(request: NextRequest) {
         projetId: body.projetId,
         libelle: body.libelle,
         description: body.description,
-        priorite: body.priorite || 'Moyenne',
+        priorite: normalizePriority(body.priorite),
         assigneAId,
         statut,
-        dateDebutPrevisionnelle: toOptionalDate(body.dateDebutPrevisionnelle),
-        dateFinPrevisionnelle: toOptionalDate(body.dateFinPrevisionnelle),
+        dateDebutPrevisionnelle: dateDebut,
+        dateFinPrevisionnelle: dateFin,
       },
       include: {
         assigneA: true,
@@ -81,17 +99,23 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Si la personne assignée n'est pas dans l'équipe, l'ajouter
+    // Log création
+    await prisma.activiteTache.create({
+      data: {
+        tacheId: tache.id,
+        projetId: tache.projetId,
+        type: 'creation',
+        detail: JSON.stringify({ statut: tache.statut }),
+        compteId: user.compte.id,
+      },
+    });
+
     if (assigneAId) {
       const estDansEquipe = projet.equipeProjet.some((p: { id: string }) => p.id === assigneAId);
       if (!estDansEquipe) {
         await prisma.projet.update({
           where: { id: body.projetId },
-          data: {
-            equipeProjet: {
-              connect: { id: assigneAId },
-            },
-          },
+          data: { equipeProjet: { connect: { id: assigneAId } } },
         });
       }
     }

@@ -1,12 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Building2, FolderKanban, KeyRound, LayoutDashboard, ShieldCheck, Users } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Building2, FolderKanban, KeyRound, LayoutDashboard, LogOut, ShieldCheck, Users } from 'lucide-react';
+import { useState } from 'react';
 
 export default function Navigation() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
   const isActive = (path: string) => pathname === path || pathname.startsWith(`${path}/`);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      router.push('/connexion');
+      router.refresh();
+      setLoggingOut(false);
+    }
+  };
 
   return (
     <nav className="fixed left-4 top-6 z-40 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur">
@@ -29,6 +45,12 @@ export default function Navigation() {
         <NavLink href="/profil" active={isActive('/profil')} icon={<KeyRound size={16} />}>
           PROFIL
         </NavLink>
+        <ActionButton
+          onClick={handleLogout}
+          icon={<LogOut size={16} />}
+          label={loggingOut ? 'DECONNEXION...' : 'DECONNEXION'}
+          disabled={loggingOut}
+        />
       </div>
     </nav>
   );
@@ -60,6 +82,35 @@ function NavLink({
       </Link>
       <span className="pointer-events-none absolute left-full top-1/2 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-3 py-1 text-xs font-semibold text-white opacity-0 shadow-lg transition group-hover:opacity-100">
         {children}
+      </span>
+    </div>
+  );
+}
+
+function ActionButton({
+  onClick,
+  icon,
+  label,
+  disabled = false,
+}: {
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {icon}
+      </button>
+      <span className="pointer-events-none absolute left-full top-1/2 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-3 py-1 text-xs font-semibold text-white opacity-0 shadow-lg transition group-hover:opacity-100">
+        {label}
       </span>
     </div>
   );
