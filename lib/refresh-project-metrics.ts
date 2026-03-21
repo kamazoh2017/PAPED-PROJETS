@@ -54,6 +54,7 @@ export async function refreshProjectMetrics(projetId: string): Promise<void> {
   const taskMetrics: TaskMetrics[] = tasks.map((t) => ({
     statut: t.statut,
     priorite: t.priorite,
+    dateDebutPrevisionnelle: t.dateDebutPrevisionnelle,
     dateFinPrevisionnelle: t.dateFinPrevisionnelle,
     dateFinEffective: t.dateFinEffective,
   }));
@@ -80,13 +81,14 @@ export async function refreshProjectMetrics(projetId: string): Promise<void> {
   // ── 2. Statut auto du projet ──────────────────────────────────────────────
   const newStatut = computeProjectStatut(taskMetrics, project.statut);
 
-  // ── 3. etatAvancement du projet ───────────────────────────────────────────
-  const etatAvancement = computeAvancement(project, taskMetrics, now);
-
+  // ── 3. Taux (réel et attendu) — calculés avant etatAvancement ────────────
   const tauxAvancementReel    = computeTauxAvancementReel(taskMetrics);
-  const tauxAvancementAttendu = computeTauxAvancementAttendu(project, now);
+  const tauxAvancementAttendu = computeTauxAvancementAttendu(taskMetrics, now);
   const tauxAchevementReel    = computeTauxAchevementReel(taskMetrics);
   const tauxAchevementAttendu = computeTauxAchevementAttendu(taskMetrics, now);
+
+  // ── 4. etatAvancement du projet (dépend des taux) ─────────────────────────
+  const etatAvancement = computeAvancement(project, tauxAvancementReel, tauxAvancementAttendu, now);
 
   await prisma.projet.update({
     where: { id: projetId },
@@ -100,7 +102,7 @@ export async function refreshProjectMetrics(projetId: string): Promise<void> {
     },
   });
 
-  // ── 4. Scores de risque ───────────────────────────────────────────────────
+  // ── 5. Scores de risque ───────────────────────────────────────────────────
   const risks = computeRiskScores(project, taskMetrics, now);
   const entries = [
     { libelle: 'retard',      taux: risks.retard },

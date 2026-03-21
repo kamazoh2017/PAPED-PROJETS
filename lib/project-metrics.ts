@@ -6,6 +6,7 @@
 export interface TaskMetrics {
   statut: string;
   priorite: string;
+  dateDebutPrevisionnelle?: Date | string | null;
   dateFinPrevisionnelle?: Date | string | null;
   dateFinEffective?: Date | string | null;
 }
@@ -103,63 +104,115 @@ export type Avancement = 'en-avance' | 'a-lheure' | 'retard' | 'hors-delai';
 
 /**
  * Calcule l'état d'avancement d'un projet.
- * - hors-delai : la fin effective réelle dépasse la fin prévisionnelle
- * - en-avance  : progression réelle > prévue de plus de 5 points
- * - retard     : progression réelle < prévue de plus de 5 points
- * - a-lheure   : sinon
+ *
+ * Terminé / Clôturé
+ *   finEff < finPrev  → en-avance
+ *   finEff = finPrev  → a-lheure
+ *   finEff > finPrev  → hors-delai
+ *
+ * En cours / En démarrage / Suspendu
+ *   aujourd'hui > finPrev       → hors-delai
+ *   écart > +10 pts             → en-avance
+ *   écart < -10 pts             → retard
+ *   sinon                       → a-lheure
+ *   (écart = avancementReel - avancementAttendu)
  */
-export function computeAvancement(project: ProjectForMetrics, tasks: TaskMetrics[], nowTs: number): Avancement {
+export function computeAvancement(
+  project: ProjectForMetrics,
+  avancementReel: number,
+  avancementAttendu: number,
+  nowTs: number,
+): Avancement {
+  const statut  = String((project as any).statut ?? '').trim().toLowerCase();
   const finPrev = parseMetricsDate(project.dateFinPrevisionnelle);
-  const explicitFinEff = parseMetricsDate(project.dateFinEffective);
-  const taskFinEff = tasks
-    .map((t) => parseMetricsDate(t.dateFinEffective))
-    .filter((ts): ts is number => ts !== null)
-    .sort((a, b) => b - a)[0] ?? null;
-  const finEff = explicitFinEff ?? taskFinEff;
+  const finEff  = parseMetricsDate(project.dateFinEffective);
 
-  if (finPrev !== null && finEff !== null && finEff > finPrev) return 'hors-delai';
+  // ── Terminé ou Clôturé ──────────────────────────────────────────────────
+  if (statut === 'terminé' || statut === 'termine' || statut === 'clôturé' || statut === 'cloture') {
+    if (finEff !== null && finPrev !== null) {
+      if (finEff < finPrev)  return 'en-avance';
+      if (finEff === finPrev) return 'a-lheure';
+      return 'hors-delai';
+    }
+    return 'a-lheure';
+  }
 
-  const real = getWeightedProgression(tasks);
-  const expected = getExpectedProgress(project, nowTs);
-  const delta = real - expected;
-  if (delta > 5) return 'en-avance';
-  if (delta < -5) return 'retard';
+  // ── En cours / En démarrage / Suspendu ──────────────────────────────────
+  if (finPrev !== null && nowTs > finPrev) return 'hors-delai';
+  const ecart = avancementReel - avancementAttendu;
+  if (ecart > 10)  return 'en-avance';
+  if (ecart < -10) return 'retard';
   return 'a-lheure';
 }
 
 // ─── Avancement d'une tâche individuelle ─────────────────────────────────────
 
 export interface TaskWithDates extends TaskMetrics {
-  dateDebutPrevisionnelle?: Date | string | null;
   dateDebutEffective?: Date | string | null;
 }
 
 /**
  * Calcule l'état d'avancement d'une tâche individuelle.
- * - hors-delai : non terminée ET dateFinPrevisionnelle dépassée
- *                OU terminée après la dateFinPrevisionnelle
- * - en-avance  : terminée dans les délais (finEff <= finPrev ou pas de finPrev)
- * - retard     : non terminée ET dateDebutPrevisionnelle dépassée ET dans les délais
- * - a-lheure   : pas encore débutée ou dans les délais
+ *
+ * Terminé / Validé
+ *   finEff < finPrev  → en-avance
+ *   finEff = finPrev  → a-lheure
+ *   finEff > finPrev  → hors-delai
+ *
+ * En cours
+ *   debutEff < debutPrev              → en-avance
+ *   aujourd'hui < finPrev             → a-lheure
+ *   aujourd'hui >= finPrev            → retard
+ *
+ * À faire
+ *   aujourd'hui > finPrev             → hors-delai  (priorité max)
+ *   aujourd'hui >= debutPrev          → retard
+ *   sinon                             → a-lheure
+ *
+ * En attente
+ *   aujourd'hui > finPrev             → hors-delai
+ *   sinon                             → a-lheure
+ *
+ * À planifier / autres               → a-lheure
  */
 export function computeTaskAvancement(task: TaskWithDates, nowTs: number): Avancement {
-  const isDone = isTaskDone(task.statut);
-  const finPrev = parseMetricsDate(task.dateFinPrevisionnelle);
+  const s = String(task.statut ?? '').trim().toLowerCase();
+  const finPrev   = parseMetricsDate(task.dateFinPrevisionnelle);
   const debutPrev = parseMetricsDate(task.dateDebutPrevisionnelle);
-  const finEff = parseMetricsDate(task.dateFinEffective);
+  const finEff    = parseMetricsDate(task.dateFinEffective);
+  const debutEff  = parseMetricsDate((task as TaskWithDates).dateDebutEffective);
 
-  // Terminée après la date prévue → hors-délai
-  if (isDone && finPrev !== null && finEff !== null && finEff > finPrev) return 'hors-delai';
+  // ── Terminé ou Validé ───────────────────────────────────────────────────
+  if (s === 'terminé' || s === 'termine' || s === 'validé' || s === 'valide') {
+    if (finEff !== null && finPrev !== null) {
+      if (finEff < finPrev) return 'en-avance';
+      if (finEff === finPrev) return 'a-lheure';
+      return 'hors-delai';
+    }
+    return 'a-lheure';
+  }
 
-  // Non terminée et date de fin dépassée → hors-délai
-  if (!isDone && finPrev !== null && nowTs > finPrev) return 'hors-delai';
+  // ── En cours ────────────────────────────────────────────────────────────
+  if (s === 'en cours') {
+    if (debutEff !== null && debutPrev !== null && debutEff < debutPrev) return 'en-avance';
+    if (finPrev !== null && nowTs >= finPrev) return 'retard';
+    return 'a-lheure';
+  }
 
-  // Terminée dans les délais → en avance
-  if (isDone) return 'en-avance';
+  // ── À faire ─────────────────────────────────────────────────────────────
+  if (s === 'a faire' || s === 'à faire') {
+    if (finPrev !== null && nowTs > finPrev) return 'hors-delai';
+    if (debutPrev !== null && nowTs >= debutPrev) return 'retard';
+    return 'a-lheure';
+  }
 
-  // Non terminée, date de début dépassée → en retard
-  if (!isDone && debutPrev !== null && nowTs > debutPrev) return 'retard';
+  // ── En attente ──────────────────────────────────────────────────────────
+  if (s === 'en attente') {
+    if (finPrev !== null && nowTs > finPrev) return 'hors-delai';
+    return 'a-lheure';
+  }
 
+  // ── À planifier / autres ────────────────────────────────────────────────
   return 'a-lheure';
 }
 
@@ -266,11 +319,31 @@ export function computeTauxAvancementReel(tasks: TaskMetrics[]): number {
 }
 
 /**
- * Taux d'avancement attendu (prévisionnel) : % du temps écoulé sur la durée totale du projet.
- * Alias de getExpectedProgress, retourne 0–100.
+ * Progression attendue d'une tâche individuelle à la date nowTs.
+ *   aujourd'hui < débutPrev  → 0 %
+ *   aujourd'hui >= finPrev   → 100 %
+ *   sinon                    → interpolation linéaire (0–100)
  */
-export function computeTauxAvancementAttendu(project: ProjectForMetrics, nowTs: number): number {
-  return getExpectedProgress(project, nowTs);
+function getTaskExpectedProgression(task: TaskMetrics, nowTs: number): number {
+  const debutPrev = parseMetricsDate(task.dateDebutPrevisionnelle);
+  const finPrev   = parseMetricsDate(task.dateFinPrevisionnelle);
+  if (debutPrev === null || finPrev === null || finPrev <= debutPrev) return 0;
+  if (nowTs < debutPrev) return 0;
+  if (nowTs >= finPrev)  return 100;
+  return clamp(((nowTs - debutPrev) / (finPrev - debutPrev)) * 100);
+}
+
+/**
+ * Taux d'avancement attendu (prévisionnel) :
+ * simulation de la progression que chaque tâche devrait avoir à aujourd'hui
+ * d'après ses dates prévisionnelles, puis moyenne pondérée par poids_priorité.
+ * Σ(progressionAttendue × poidsPriorite) / Σ(poidsPriorite)
+ */
+export function computeTauxAvancementAttendu(tasks: TaskMetrics[], nowTs: number): number {
+  if (!tasks.length) return 0;
+  const ws = tasks.reduce((acc, t) => acc + getTaskExpectedProgression(t, nowTs) * getPriorityWeight(t.priorite), 0);
+  const tw = tasks.reduce((acc, t) => acc + getPriorityWeight(t.priorite), 0);
+  return tw ? Math.round(ws / tw) : 0;
 }
 
 /**
