@@ -1067,9 +1067,9 @@ export default function ProjetDetailPage() {
                     onChange={e => setTaskForm(f => ({ ...f, assigneAId: e.target.value }))}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   >
-                    <option value="">— Sélectionner un membre —</option>
-                    {projet.equipeProjet.map(m => (
-                      <option key={m.id} value={m.id}>{m.prenoms} {m.nom}</option>
+                    <option value="">— Sélectionner une personne —</option>
+                    {ressources.map(m => (
+                      <option key={m.id} value={m.id}>{m.prenoms} {m.nom} ({m.fonction})</option>
                     ))}
                   </select>
                 </div>
@@ -1326,6 +1326,16 @@ export default function ProjetDetailPage() {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
+                  <textarea
+                    value={detailEdit.description ?? selectedTask.description ?? ''}
+                    onChange={e => setDetailEdit((d: any) => ({ ...d, description: e.target.value }))}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                  />
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Priorité</label>
@@ -1348,8 +1358,8 @@ export default function ProjetDetailPage() {
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                     >
                       <option value="">— Non assigné —</option>
-                      {projet.equipeProjet.map(m => (
-                        <option key={m.id} value={m.id}>{m.prenoms} {m.nom}</option>
+                      {ressources.map(m => (
+                        <option key={m.id} value={m.id}>{m.prenoms} {m.nom} ({m.fonction})</option>
                       ))}
                     </select>
                   </div>
