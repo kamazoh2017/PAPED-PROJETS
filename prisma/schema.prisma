@@ -27,6 +27,11 @@ model Projet {
   tauxAchevementReel      Float     @default(0)
   tauxAchevementAttendu   Float     @default(0)
 
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
   chefProjet      PersonneRessource @relation("ProjetChef", fields: [chefProjetId], references: [id])
   equipeProjet    PersonneRessource[] @relation("EquipeProjet")
   taches           Tache[]
@@ -41,6 +46,11 @@ model Entite {
   id      String   @id @default(cuid())
   libelle String   @unique
   tutelle String?
+
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
 
   personnesRessources   PersonneRessource[]
   partiesPrenantes      PartiePrenante[]
@@ -59,6 +69,11 @@ model PersonneRessource {
   entiteId      String
   estChefProjet Boolean  @default(false)
   dateCreation  DateTime @default(now())
+
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
 
   entite                  Entite                  @relation(fields: [entiteId], references: [id], onDelete: Cascade)
   projetsChef             Projet[]                @relation("ProjetChef")
@@ -82,6 +97,11 @@ model CompteAcces {
   dateCreation       DateTime               @default(now())
   dateDerniereConnex DateTime?
 
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
   personne           PersonneRessource?      @relation(fields: [personneId], references: [id], onDelete: Cascade)
   permissions        PermissionPageAction[]
   sessions           SessionAuth[]
@@ -99,6 +119,11 @@ model PermissionPageAction {
   autorise   Boolean  @default(false)
   dateMaj    DateTime @updatedAt
 
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
   compte CompteAcces @relation(fields: [compteId], references: [id], onDelete: Cascade)
 
   @@unique([compteId, pageKey, actionKey])
@@ -112,6 +137,11 @@ model SessionAuth {
   expireLe    DateTime
   dateCreation DateTime @default(now())
 
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
   compte CompteAcces @relation(fields: [compteId], references: [id], onDelete: Cascade)
 
   @@map("sessions_auth")
@@ -124,6 +154,11 @@ model PartiePrenante {
   entiteId      String?
   responsableId String?
 
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
   entite       Entite?             @relation(fields: [entiteId], references: [id], onDelete: SetNull)
   responsable  PersonneRessource?  @relation(fields: [responsableId], references: [id], onDelete: SetNull)
   projetChamps PartiePrenanteProjets[]
@@ -135,6 +170,11 @@ model PartiePrenanteProjets {
   id             String @id @default(cuid())
   projetId       String
   partiePrenantId String
+
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
 
   projet         Projet         @relation(fields: [projetId], references: [id], onDelete: Cascade)
   partiePrenante PartiePrenante @relation(fields: [partiePrenantId], references: [id], onDelete: Cascade)
@@ -161,6 +201,11 @@ model Tache {
   dateFinEffective        DateTime?
   ordre                   Int      @default(0)
 
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
   projet       Projet              @relation(fields: [projetId], references: [id], onDelete: Cascade)
   assigneA     PersonneRessource?  @relation("TacheAssignee", fields: [assigneAId], references: [id], onDelete: SetNull)
   commentaires    CommentaireTache[]
@@ -176,6 +221,11 @@ model CommentaireTache {
   contenu       String
   dateCreation  DateTime @default(now())
   parentId      String?
+
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
 
   tache       Tache             @relation(fields: [tacheId], references: [id], onDelete: Cascade)
   compteAcces CompteAcces       @relation(fields: [compteAccesId], references: [id], onDelete: Cascade)
@@ -193,6 +243,11 @@ model RisqueProjet {
   gravite  String @default("Faible")
   couleur  String @default("Vert")
 
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
   projet Projet @relation(fields: [projetId], references: [id], onDelete: Cascade)
 
   @@unique([projetId, libelle])
@@ -207,6 +262,11 @@ model ActiviteTache {
   detail       String   @default("{}")
   compteId     String?
   dateCreation DateTime @default(now())
+
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
 
   tache  Tache        @relation(fields: [tacheId], references: [id], onDelete: Cascade)
   projet Projet       @relation(fields: [projetId], references: [id], onDelete: Cascade)
@@ -227,8 +287,29 @@ model TachePerodique {
   statut           String   @default("A faire")
   dateCreation     DateTime @default(now())
 
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
   responsable     PersonneRessource @relation(fields: [responsableId], references: [id], onDelete: Cascade, name: "TachePeriodiqueResponsable")
   entiteExecution Entite            @relation(fields: [entiteExecutionId], references: [id], onDelete: Cascade, name: "TachePeriodiqueExecutant")
 
   @@map("taches_periodiques")
+}
+
+model HistoriqueModification {
+  id               String   @id @default(cuid())
+  table            String
+  enregistrementId String
+  action           String
+  avant            String?
+  apres            String?
+  compteId         String?
+  login            String?
+  dateCree         DateTime @default(now())
+
+  @@index([table, enregistrementId])
+  @@index([dateCree])
+  @@map("historique_modifications")
 }
