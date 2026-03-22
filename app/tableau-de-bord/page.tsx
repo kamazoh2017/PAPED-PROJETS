@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList } from 'recharts';
 
 type Avancement = 'retard' | 'a-lheure' | 'en-avance' | 'hors-delai';
 
@@ -254,20 +254,6 @@ function MetricCard({
   );
 }
 
-function DistributionRow({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
-  const pct = safePct(value, total);
-  return (
-    <div className="space-y-1.5">
-      <div className="flex justify-between text-xs text-slate-600 font-medium">
-        <span>{label}</span>
-        <span>{value} ({pct}%)</span>
-      </div>
-      <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
-        <div className={`h-2.5 rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}
 
 export default function DashboardPage() {
   const [projets, setProjets] = useState<Projet[]>([]);
@@ -494,19 +480,23 @@ export default function DashboardPage() {
 
   // Graphique 3: Charge par chef de projet (barres empilées)
   const chargeChefProjet = useMemo(() => {
-    const map = new Map<string, { name: string; 'A l\'heure': number; 'En retard': number; 'Hors délais': number }>();
+    const map = new Map<string, { name: string; 'En avance': number; 'À l\'heure': number; 'En retard': number; 'Hors délais': number }>();
     projets.forEach((p) => {
       if (!p.chefProjet?.id) return;
       const id = p.chefProjet.id;
       const name = `${p.chefProjet.prenoms} ${p.chefProjet.nom}`;
-      const current = map.get(id) ?? { name, 'A l\'heure': 0, 'En retard': 0, 'Hors délais': 0 };
+      const current = map.get(id) ?? { name, 'En avance': 0, 'À l\'heure': 0, 'En retard': 0, 'Hors délais': 0 };
       const av = projectAvancement.find((pa) => pa.project.id === p.id)?.avancement;
-      if (av === 'en-avance' || av === 'a-lheure') current['A l\'heure'] += 1;
-      else if (av === 'retard') current['En retard'] += 1;
+      if (av === 'en-avance')   current['En avance'] += 1;
+      else if (av === 'a-lheure')   current['À l\'heure'] += 1;
+      else if (av === 'retard')     current['En retard'] += 1;
       else if (av === 'hors-delai') current['Hors délais'] += 1;
       map.set(id, current);
     });
-    return Array.from(map.values()).sort((a, b) => (b['A l\'heure'] + b['En retard'] + b['Hors délais']) - (a['A l\'heure'] + a['En retard'] + a['Hors délais'])).slice(0, 10);
+    return Array.from(map.values()).sort((a, b) =>
+      (b['En avance'] + b['À l\'heure'] + b['En retard'] + b['Hors délais']) -
+      (a['En avance'] + a['À l\'heure'] + a['En retard'] + a['Hors délais'])
+    ).slice(0, 10);
   }, [projets, projectAvancement]);
 
   // Graphique 4: Avancement vs Temps (progression réelle et attendue)
@@ -697,7 +687,10 @@ export default function DashboardPage() {
           <h3 className="text-base font-semibold text-slate-800 mb-2">Répartition par statut</h3>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
-              <Pie data={statusPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
+              <Pie data={statusPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value"
+                label={({ value, percent }) => value > 0 ? `${value} (${(percent * 100).toFixed(0)}%)` : ''}
+                labelLine={false}
+              >
                 {statusPieData.map((entry, i) => (
                   <Cell key={`s-${i}`} fill={entry.color} />
                 ))}
@@ -716,7 +709,9 @@ export default function DashboardPage() {
               <XAxis dataKey="name" tick={{ fontSize: 12 }} />
               <YAxis allowDecimals={false} />
               <Tooltip />
-              <Bar dataKey="value" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="value" fill="#3b82f6" radius={[8, 8, 0, 0]}>
+                <LabelList dataKey="value" position="top" style={{ fontSize: 12, fontWeight: 600, fill: '#475569' }} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -724,7 +719,7 @@ export default function DashboardPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-base font-semibold text-slate-800 mb-2">Avancement (délais)</h3>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={avancementPieData} layout="vertical" margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+            <BarChart data={avancementPieData} layout="vertical" margin={{ top: 4, right: 36, left: 8, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis type="number" allowDecimals={false} />
               <YAxis dataKey="name" type="category" width={84} tick={{ fontSize: 12 }} />
@@ -733,6 +728,7 @@ export default function DashboardPage() {
                 {avancementPieData.map((entry) => (
                   <Cell key={`a-${entry.name}`} fill={entry.color} />
                 ))}
+                <LabelList dataKey="value" position="right" style={{ fontSize: 12, fontWeight: 600, fill: '#475569' }} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -760,8 +756,8 @@ export default function DashboardPage() {
               <YAxis label={{ value: '% Progression', angle: -90, position: 'insideLeft' }} />
               <Tooltip formatter={(v: number) => `${v}%`} />
               <Legend />
-              <Line type="monotone" dataKey="reel" stroke="#3b82f6" name="Progression réelle" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="attendu" stroke="#94a3b8" name="Progression attendue" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              <Line type="monotone" dataKey="reel" stroke="#3b82f6" name="Progression réelle" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6' }} label={false} />
+              <Line type="monotone" dataKey="attendu" stroke="#94a3b8" name="Progression attendue" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3, fill: '#94a3b8' }} label={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -772,9 +768,11 @@ export default function DashboardPage() {
             <BarChart data={progressionByRange}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-              <YAxis label={{ value: 'Nombre de projets', angle: -90, position: 'insideLeft' }} />
+              <YAxis label={{ value: 'Nb projets', angle: -90, position: 'insideLeft' }} allowDecimals={false} />
               <Tooltip />
-              <Bar dataKey="count" fill="#10b981" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="count" fill="#10b981" radius={[8, 8, 0, 0]}>
+                <LabelList dataKey="count" position="top" style={{ fontSize: 12, fontWeight: 600, fill: '#475569' }} formatter={(v: number) => v > 0 ? v : ''} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -784,15 +782,24 @@ export default function DashboardPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-base font-semibold text-slate-800 mb-3">Charge par chef de projet</h3>
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={chargeChefProjet} layout="vertical">
+            <BarChart data={chargeChefProjet} layout="vertical" margin={{ top: 4, right: 40, left: 4, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis type="number" tick={{ fontSize: 12 }} />
+              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
               <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11 }} />
               <Tooltip />
-              <Legend />
-              <Bar dataKey="A l'heure"  stackId="a" fill="#22c55e" />
-              <Bar dataKey="En retard"  stackId="a" fill="#f97316" />
-              <Bar dataKey="Hors délais" stackId="a" fill="#ef4444" />
+              <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '12px' }} />
+              <Bar dataKey="En avance"   stackId="a" fill="#22c55e" />
+              <Bar dataKey="À l'heure"  stackId="a" fill="#3b82f6" />
+              <Bar dataKey="En retard"   stackId="a" fill="#f97316" />
+              <Bar dataKey="Hors délais" stackId="a" fill="#ef4444" radius={[0, 4, 4, 0]}>
+                <LabelList
+                  valueAccessor={(entry: Record<string, number>) =>
+                    (entry['En avance'] ?? 0) + (entry['À l\'heure'] ?? 0) + (entry['En retard'] ?? 0) + (entry['Hors délais'] ?? 0)
+                  }
+                  position="right"
+                  style={{ fontSize: 12, fontWeight: 600, fill: '#475569' }}
+                />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -840,13 +847,22 @@ export default function DashboardPage() {
             <BarChart data={riskLevelDistribution}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="level" tick={{ fontSize: 12 }} />
-              <YAxis />
+              <YAxis allowDecimals={false} />
               <Tooltip />
-              <Legend />
-              <Bar dataKey="retard" name="Retard" stackId="risk" fill="#ef4444" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="horsDelai" name="Hors délai" stackId="risk" fill="#f97316" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="progression" name="Progression" stackId="risk" fill="#3b82f6" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="suspendu" name="Suspendu" stackId="risk" fill="#7c3aed" radius={[8, 8, 0, 0]} />
+              <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '12px' }} />
+              <Bar dataKey="retard"     name="Retard"       stackId="risk" fill="#ef4444" />
+              <Bar dataKey="horsDelai"  name="Hors délai"   stackId="risk" fill="#f97316" />
+              <Bar dataKey="progression" name="Progression" stackId="risk" fill="#3b82f6" />
+              <Bar dataKey="suspendu"   name="Suspendu"     stackId="risk" fill="#7c3aed" radius={[8, 8, 0, 0]}>
+                <LabelList
+                  valueAccessor={(entry: Record<string, number>) =>
+                    (entry.retard ?? 0) + (entry.horsDelai ?? 0) + (entry.progression ?? 0) + (entry.suspendu ?? 0)
+                  }
+                  position="top"
+                  style={{ fontSize: 11, fontWeight: 600, fill: '#475569' }}
+                  formatter={(v: number) => v > 0 ? v : ''}
+                />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -921,7 +937,10 @@ export default function DashboardPage() {
           <h3 className="text-base font-semibold text-slate-800 mb-2">Répartition par statut</h3>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
-              <Pie data={taskStatusPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
+              <Pie data={taskStatusPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value"
+                label={({ value, percent }) => value > 0 ? `${value} (${(percent * 100).toFixed(0)}%)` : ''}
+                labelLine={false}
+              >
                 {taskStatusPieData.map((e, i) => <Cell key={i} fill={e.color} />)}
               </Pie>
               <Tooltip formatter={(v: number) => [v, 'tâches']} />
@@ -935,7 +954,10 @@ export default function DashboardPage() {
           <h3 className="text-base font-semibold text-slate-800 mb-2">Répartition par priorité</h3>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
-              <Pie data={taskPrioriteData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
+              <Pie data={taskPrioriteData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value"
+                label={({ value, percent }) => value > 0 ? `${value} (${(percent * 100).toFixed(0)}%)` : ''}
+                labelLine={false}
+              >
                 {taskPrioriteData.map((e, i) => <Cell key={i} fill={e.color} />)}
               </Pie>
               <Tooltip formatter={(v: number) => [v, 'tâches']} />
@@ -948,14 +970,20 @@ export default function DashboardPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-base font-semibold text-slate-800 mb-2">Avancement tâches par projet</h3>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={avancementParProjet} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
+            <BarChart data={avancementParProjet} layout="vertical" margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
               <YAxis dataKey="name" type="category" width={110} tick={{ fontSize: 10 }} />
               <Tooltip formatter={(v: number, name: string) => [v, name === 'done' ? 'Achevées' : 'Restantes']} />
               <Legend wrapperStyle={{ fontSize: '12px' }} formatter={(v) => v === 'done' ? 'Achevées' : 'Restantes'} />
               <Bar dataKey="done"    stackId="a" fill="#22c55e" name="done" />
-              <Bar dataKey="restant" stackId="a" fill="#e2e8f0" name="restant" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="restant" stackId="a" fill="#e2e8f0" name="restant" radius={[0, 4, 4, 0]}>
+                <LabelList
+                  valueAccessor={(entry: { done: number; total: number }) => entry.total}
+                  position="right"
+                  style={{ fontSize: 11, fontWeight: 600, fill: '#475569' }}
+                />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
