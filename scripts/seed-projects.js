@@ -51,7 +51,7 @@ function assignTaskDates(tasks, projectStart, projectEnd) {
       dateDebutPrevisionnelle: debutPrev,
       dateFinPrevisionnelle:   finPrev,
       dateDebutEffective:      isCompleted ? debutPrev : null,
-      dateFinEffective:        isCompleted ? finPrev   : null,
+      dateFinEffective:        null,
     };
   });
 }
@@ -231,7 +231,7 @@ const PROJETS = [
     dateDebutPrevisionnelle: d(2026, 3, 17),
     dateFinPrevisionnelle:   d(2026, 3, 24),
     dateDebutEffective:      d(2026, 3, 17),
-    dateFinEffective:        d(2026, 3, 24),
+    dateFinEffective:        null,
     taches: [
       { ordre: 1,  priorite: 'Bloquant', statut: 'Validé', libelle: 'Initialisation du projet Next.js 15 avec TypeScript', description: "Mise en place du dépôt Git, configuration de Next.js 15 (App Router), TypeScript strict, ESLint, Prettier et structure de dossiers src/app." },
       { ordre: 2,  priorite: 'Bloquant', statut: 'Validé', libelle: "Configuration Prisma ORM + SQLite (dev) / PostgreSQL (prod)", description: "Initialisation de Prisma, datasource SQLite pour le développement local et PostgreSQL pour Railway en production. Script de build Railway pour patcher le schema." },
