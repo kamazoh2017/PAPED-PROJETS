@@ -2,200 +2,238 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
-
-interface PermissionAction {
-  key: string;
-  label: string;
-  autorise: boolean;
-}
-
-interface PermissionPage {
-  key: string;
-  label: string;
-  actions: PermissionAction[];
-}
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { PERMISSIONS_CATALOG, PermNodeDef, flattenPermissions } from '@/lib/permissions-catalog';
 
 interface Compte {
   id: string;
-  personne: {
-    nom: string;
-    prenoms: string;
-    telephone?: string;
-    email: string;
-  };
+  personne: { nom: string; prenoms: string; telephone?: string; email: string };
 }
 
+// ── Flatten all pairs from the catalog ────────────────────────────────────────
+const ALL_PAIRS = flattenPermissions(PERMISSIONS_CATALOG);
+
+// ── Get all pairs under a node (recursively) ──────────────────────────────────
+function nodeAllPairs(node: PermNodeDef): { pageKey: string; actionKey: string }[] {
+  return flattenPermissions([node]);
+}
+
+// ── Recursive tree row ─────────────────────────────────────────────────────────
+function TreeRow({
+  node, depth, granted, onToggle,
+}: {
+  node: PermNodeDef;
+  depth: number;
+  granted: Record<string, boolean>;
+  onToggle: (pageKey: string, actionKey: string) => void;
+}) {
+  const pairs = nodeAllPairs(node);
+  const allOn  = pairs.every(p => granted[`${p.pageKey}:${p.actionKey}`]);
+  const someOn = pairs.some(p => granted[`${p.pageKey}:${p.actionKey}`]);
+
+  const toggleAll = () => {
+    const next = !allOn;
+    pairs.forEach(p => {
+      if (granted[`${p.pageKey}:${p.actionKey}`] !== next) {
+        onToggle(p.pageKey, p.actionKey);
+      }
+    });
+  };
+
+  const padLeft = depth * 24 + 12;
+  const isFlat = !node.children || node.children.length === 0;
+
+  const actionCheckboxes = node.actions.map(action => {
+    const key = `${node.pageKey}:${action.key}`;
+    return (
+      <label key={key} className="flex items-center gap-1.5 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={granted[key] ?? false}
+          onChange={() => onToggle(node.pageKey, action.key)}
+          className="h-3.5 w-3.5 accent-primary"
+        />
+        <span className="text-xs text-slate-600">{action.label}</span>
+      </label>
+    );
+  });
+
+  return (
+    <>
+      <tr className="border-b border-slate-100 hover:bg-slate-50/50">
+        {/* Element column */}
+        <td className={`py-2 pr-4 align-middle${isFlat ? ' w-full' : ''}`} style={{ paddingLeft: padLeft }} colSpan={isFlat ? 2 : 1}>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Section toggle (only for nodes with children) */}
+            {!isFlat ? (
+              <input
+                type="checkbox"
+                checked={allOn}
+                ref={el => { if (el) el.indeterminate = someOn && !allOn; }}
+                onChange={toggleAll}
+                className="h-3.5 w-3.5 accent-primary flex-shrink-0"
+                title="Tout cocher / décocher"
+              />
+            ) : null}
+            <span className={`text-sm ${depth === 0 ? 'font-semibold text-slate-800' : depth === 1 ? 'font-medium text-slate-700' : 'text-slate-600'}`}>
+              {node.label}
+            </span>
+            {/* Inline checkboxes for flat nodes */}
+            {isFlat && <div className="flex flex-wrap gap-x-4 gap-y-1 ml-2">{actionCheckboxes}</div>}
+          </div>
+        </td>
+        {/* Actions column — only for nodes with children */}
+        {!isFlat && (
+          <td className="py-2 pl-2 align-middle">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">{actionCheckboxes}</div>
+          </td>
+        )}
+      </tr>
+      {node.children?.map(child => (
+        <TreeRow
+          key={`${child.pageKey}-${child.label}`}
+          node={child}
+          depth={depth + 1}
+          granted={granted}
+          onToggle={onToggle}
+        />
+      ))}
+    </>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 export default function AutorisationsComptePage() {
   const params = useParams();
   const id = params.id as string;
 
   const [compte, setCompte] = useState<Compte | null>(null);
-  const [pages, setPages] = useState<PermissionPage[]>([]);
+  const [granted, setGranted] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  const fetchPermissions = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await fetch(`/api/comptes-acces/${id}/autorisations`);
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data?.error || 'Erreur de chargement.');
-        return;
-      }
-      setCompte(data.compte);
-      setPages(data.pages || []);
-    } catch {
-      setError('Erreur reseau.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    if (id) fetchPermissions();
+    if (!id) return;
+    setLoading(true);
+    fetch(`/api/comptes-acces/${id}/autorisations`)
+      .then(r => r.json())
+      .then(data => {
+        setCompte(data.compte ?? null);
+        setGranted(data.granted ?? {});
+      })
+      .catch(() => setError('Erreur de chargement.'))
+      .finally(() => setLoading(false));
   }, [id]);
 
-  const totalActions = useMemo(
-    () => pages.reduce((acc, page) => acc + page.actions.length, 0),
-    [pages]
-  );
-  const totalAutorisees = useMemo(
-    () => pages.reduce((acc, page) => acc + page.actions.filter((a) => a.autorise).length, 0),
-    [pages]
-  );
-  const allChecked = totalActions > 0 && totalAutorisees === totalActions;
+  const onToggle = useCallback((pageKey: string, actionKey: string) => {
+    setGranted(prev => ({ ...prev, [`${pageKey}:${actionKey}`]: !prev[`${pageKey}:${actionKey}`] }));
+  }, []);
 
-  const toggleAction = (pageKey: string, actionKey: string) => {
-    setPages((prev) =>
-      prev.map((page) =>
-        page.key !== pageKey
-          ? page
-          : {
-              ...page,
-              actions: page.actions.map((action) =>
-                action.key === actionKey ? { ...action, autorise: !action.autorise } : action
-              ),
-            }
-      )
-    );
-  };
+  const totalOn  = useMemo(() => ALL_PAIRS.filter(p => granted[`${p.pageKey}:${p.actionKey}`]).length, [granted]);
+  const totalAll = ALL_PAIRS.length;
+  const allOn    = totalOn === totalAll;
 
-  const toggleAllActions = () => {
-    setPages((prev) =>
-      prev.map((page) => ({
-        ...page,
-        actions: page.actions.map((action) => ({ ...action, autorise: !allChecked })),
-      }))
-    );
+  const toggleAll = () => {
+    const next = !allOn;
+    setGranted(prev => {
+      const updated = { ...prev };
+      ALL_PAIRS.forEach(p => { updated[`${p.pageKey}:${p.actionKey}`] = next; });
+      return updated;
+    });
   };
 
   const handleSave = async () => {
-    setSaving(true);
-    setMessage('');
-    setError('');
+    setSaving(true); setMessage(''); setError('');
     try {
-      const payload = pages.flatMap((page) =>
-        page.actions.map((action) => ({
-          pageKey: page.key,
-          actionKey: action.key,
-          autorise: action.autorise,
-        }))
-      );
-
+      const permissions = ALL_PAIRS.map(p => ({
+        pageKey: p.pageKey, actionKey: p.actionKey,
+        autorise: granted[`${p.pageKey}:${p.actionKey}`] ?? false,
+      }));
       const res = await fetch(`/api/comptes-acces/${id}/autorisations`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ permissions: payload }),
+        body: JSON.stringify({ permissions }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data?.error || 'Erreur de sauvegarde.');
-        return;
-      }
-      setMessage('Autorisations enregistrees avec succes.');
-    } catch {
-      setError('Erreur reseau lors de la sauvegarde.');
-    } finally {
-      setSaving(false);
-    }
+      if (!res.ok) { setError(data?.error || 'Erreur de sauvegarde.'); return; }
+      setMessage('Autorisations enregistrées avec succès.');
+    } catch { setError('Erreur réseau.'); }
+    finally { setSaving(false); }
   };
 
-  if (loading) return <p className="text-sm text-slate-500">Chargement des autorisations...</p>;
+  if (loading) return <p className="text-sm text-slate-500 p-6">Chargement…</p>;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+
+      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-primary">Page autorisation</h1>
+          <h1 className="text-2xl font-bold text-primary">Autorisations</h1>
           {compte && (
             <p className="mt-1 text-sm text-slate-500">
-              Utilisateur: {compte.personne.prenoms} {compte.personne.nom} ({compte.personne.telephone || 'Sans telephone'} / {compte.personne.email})
+              {compte.personne.prenoms} {compte.personne.nom}
+              {' · '}{compte.personne.telephone || '—'}
+              {' · '}{compte.personne.email}
             </p>
           )}
         </div>
-        <Link
-          href="/comptes-acces"
-          className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
-        >
-          Retour liste comptes
+        <Link href="/comptes-acces" className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 flex-shrink-0">
+          ← Retour
         </Link>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-slate-600">
-            Actions autorisees: <strong>{totalAutorisees}</strong> / {totalActions}
-          </p>
+      {/* Controls */}
+      <div className="flex items-center justify-between gap-4 bg-white rounded-2xl border border-slate-200 px-5 py-3 shadow-sm">
+        <p className="text-sm text-slate-600">
+          Actions autorisées : <strong className="text-primary">{totalOn}</strong>
+          <span className="text-slate-400"> / {totalAll}</span>
+        </p>
+        <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={toggleAllActions}
-            disabled={totalActions === 0}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={toggleAll}
+            className="rounded-lg border border-slate-200 px-4 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            {allChecked ? 'Tout decocher' : 'Tout cocher'}
+            {allOn ? 'Tout décocher' : 'Tout cocher'}
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50 px-5 py-1.5 text-sm font-semibold text-white"
+          >
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
           </button>
         </div>
       </div>
 
-      <div className="space-y-4">
-        {pages.map((page) => (
-          <section key={page.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-800">{page.label}</h2>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {page.actions.map((action) => (
-                <label
-                  key={`${page.key}-${action.key}`}
-                  className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    checked={action.autorise}
-                    onChange={() => toggleAction(page.key, action.key)}
-                    className="h-4 w-4"
-                  />
-                  <span>{action.label}</span>
-                </label>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      {error   && <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>}
+      {message && <p className="rounded-lg bg-green-50 px-4 py-2 text-sm text-green-700">{message}</p>}
 
-      <div className="flex items-center gap-3">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
-        >
-          {saving ? 'Enregistrement...' : 'Enregistrer les autorisations'}
-        </button>
-        {message && <span className="text-sm text-green-700">{message}</span>}
-        {error && <span className="text-sm text-red-700">{error}</span>}
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50">
+              <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide w-2/5">Élément</th>
+              <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {PERMISSIONS_CATALOG.map(node => (
+              <TreeRow
+                key={`${node.pageKey}-${node.label}`}
+                node={node}
+                depth={0}
+                granted={granted}
+                onToggle={onToggle}
+              />
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

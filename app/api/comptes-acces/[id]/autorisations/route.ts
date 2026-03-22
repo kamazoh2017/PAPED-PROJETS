@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { PERMISSIONS_CATALOG } from '@/lib/permissions-catalog';
+import { flattenPermissions, PERMISSIONS_CATALOG } from '@/lib/permissions-catalog';
 import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
 
 type Params = { params: Promise<{ id: string }> };
@@ -15,32 +15,23 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     const compte = await prisma.compteAcces.findUnique({
       where: { id },
-      include: {
-        personne: {
-          include: { entite: true },
-        },
-        permissions: true,
-      },
+      include: { personne: { include: { entite: true } }, permissions: true },
+    });
+    if (!compte) return NextResponse.json({ error: 'Compte introuvable.' }, { status: 404 });
+
+    // Build flat granted map from stored permissions
+    const granted: Record<string, boolean> = {};
+    compte.permissions.forEach(p => {
+      granted[`${p.pageKey}:${p.actionKey}`] = p.autorise;
     });
 
-    if (!compte) {
-      return NextResponse.json({ error: 'Compte introuvable.' }, { status: 404 });
-    }
+    // Ensure every possible key is present (default false)
+    flattenPermissions(PERMISSIONS_CATALOG).forEach(({ pageKey, actionKey }) => {
+      const k = `${pageKey}:${actionKey}`;
+      if (!(k in granted)) granted[k] = false;
+    });
 
-    const map = new Map<string, boolean>();
-    compte.permissions.forEach((p) => map.set(`${p.pageKey}:${p.actionKey}`, p.autorise));
-
-    const pages = PERMISSIONS_CATALOG.map((page) => ({
-      key: page.key,
-      label: page.label,
-      actions: page.actions.map((action) => ({
-        key: action.key,
-        label: action.label,
-        autorise: map.get(`${page.key}:${action.key}`) ?? false,
-      })),
-    }));
-
-    return NextResponse.json({ compte, pages });
+    return NextResponse.json({ compte, granted });
   } catch {
     return NextResponse.json({ error: 'Erreur lors du chargement des autorisations.' }, { status: 500 });
   }
@@ -57,9 +48,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const permissions = Array.isArray(body.permissions) ? body.permissions : [];
 
     const compte = await prisma.compteAcces.findUnique({ where: { id } });
-    if (!compte) {
-      return NextResponse.json({ error: 'Compte introuvable.' }, { status: 404 });
-    }
+    if (!compte) return NextResponse.json({ error: 'Compte introuvable.' }, { status: 404 });
 
     await prisma.$transaction(
       permissions.map((perm: { pageKey: string; actionKey: string; autorise: boolean }) =>
@@ -71,15 +60,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
               actionKey: String(perm.actionKey),
             },
           },
-          update: {
-            autorise: Boolean(perm.autorise),
-          },
-          create: {
-            compteId: id,
-            pageKey: String(perm.pageKey),
-            actionKey: String(perm.actionKey),
-            autorise: Boolean(perm.autorise),
-          },
+          update:  { autorise: Boolean(perm.autorise) },
+          create:  { compteId: id, pageKey: String(perm.pageKey), actionKey: String(perm.actionKey), autorise: Boolean(perm.autorise) },
         })
       )
     );
