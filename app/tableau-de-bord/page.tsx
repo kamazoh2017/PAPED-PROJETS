@@ -468,15 +468,14 @@ export default function DashboardPage() {
     return ranges;
   }, [projets]);
 
-  // Graphique 2: Distribution des projets par achèvement
-  const achievementData = useMemo(() => {
-    const achieved = projets.filter((p) => p.statut === 'Terminé' || p.statut === 'Clôturé').length;
-    const notAchieved = totalProjects - achieved;
-    return [
-      { name: 'Achevés', value: achieved, fill: '#10b981' },
-      { name: 'Pas achevés', value: notAchieved, fill: '#94a3b8' },
-    ];
-  }, [projets, totalProjects]);
+  // Graphique 2: Distribution des projets par statut (achèvement)
+  const achievementData = useMemo(() => [
+    { name: 'En démarrage', value: projectsNonDemarres, fill: '#3b82f6' },
+    { name: 'En cours',     value: projectsEnCours,     fill: '#f97316' },
+    { name: 'Terminés',     value: projectsTermines,    fill: '#22c55e' },
+    { name: 'Clôturés',     value: projectsClotures,    fill: '#065f46' },
+    { name: 'Suspendus',    value: projectsSuspendus,   fill: '#ef4444' },
+  ].filter(d => d.value > 0), [projectsNonDemarres, projectsEnCours, projectsTermines, projectsClotures, projectsSuspendus]);
 
   // Graphique 3: Charge par chef de projet (barres empilées)
   const chargeChefProjet = useMemo(() => {
@@ -704,13 +703,21 @@ export default function DashboardPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-base font-semibold text-slate-800 mb-3">Distribution achèvement</h3>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={achievementData}>
+            <BarChart data={achievementData} margin={{ top: 20, right: 8, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
               <YAxis allowDecimals={false} />
-              <Tooltip />
-              <Bar dataKey="value" fill="#3b82f6" radius={[8, 8, 0, 0]}>
-                <LabelList dataKey="value" position="top" style={{ fontSize: 12, fontWeight: 600, fill: '#475569' }} />
+              <Tooltip formatter={(v: number) => [v, 'projets']} />
+              <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                {achievementData.map((entry, i) => (
+                  <Cell key={`ach-${i}`} fill={entry.fill} />
+                ))}
+                <LabelList
+                  dataKey="value"
+                  position="top"
+                  style={{ fontSize: 12, fontWeight: 600, fill: '#475569' }}
+                  formatter={(v: number) => `${v} (${safePct(v, totalProjects)}%)`}
+                />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
