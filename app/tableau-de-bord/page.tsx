@@ -278,6 +278,9 @@ export default function DashboardPage() {
   const [filterChefId, setFilterChefId] = useState('');
   const [filterPersonneId, setFilterPersonneId] = useState('');
   const [filterEntiteId, setFilterEntiteId] = useState('');
+  const [filterTprStatut, setFilterTprStatut] = useState('');
+  const [filterTprEtat, setFilterTprEtat] = useState('');
+  const [filterTprPrio, setFilterTprPrio] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -679,39 +682,7 @@ export default function DashboardPage() {
     }).filter(e => STATUTS_TACHES.some(s => ((e[s === 'A faire' ? 'À faire' : s] as number) ?? 0) > 0)),
   [filteredTaches]);
 
-  // ── Statut par état d'avancement par ressource (trié par priorité) ──────────────
-  const resourceStatutParAvancement = useMemo(() => {
-    const AV_MAP: Record<string, string> = {
-      'en-avance': 'En avance', 'a-lheure': "À l'heure",
-      'retard': 'En retard', 'hors-delai': 'Hors délai',
-    };
-    const map = new Map<string, Record<string, string | number>>();
-    filteredTaches.forEach(t => {
-      if (!t.assigneA?.id) return;
-      const id = t.assigneA.id;
-      const name = `${t.assigneA.prenoms} ${t.assigneA.nom}`;
-      const entry = map.get(id) ?? {
-        name, _poids: 0,
-        'En avance': 0, "À l'heure": 0, 'En retard': 0, 'Hors délai': 0,
-      };
-      const av = AV_MAP[t.etatAvancement ?? ''];
-      if (av) entry[av] = ((entry[av] as number) || 0) + 1;
-      (entry._poids as number) && void 0; // type hint
-      entry._poids = ((entry._poids as number) || 0) + getPriorityWeight(t.priorite);
-      map.set(id, entry);
-    });
-    return Array.from(map.values())
-      .sort((a, b) => ((b._poids as number) || 0) - ((a._poids as number) || 0))
-      .slice(0, 12);
-  }, [filteredTaches]);
 
-  // ── Tâches en retard (détail) ─────────────────────────────────────────────────
-  const tachesEnRetardDetails = useMemo(() =>
-    filteredTaches
-      .filter(t => { const fin = parseDate(t.dateFinPrevisionnelle); return fin !== null && nowTs > fin && !isTaskDone(t.statut); })
-      .sort((a, b) => getPriorityWeight(b.priorite) - getPriorityWeight(a.priorite) || (parseDate(a.dateFinPrevisionnelle) ?? 0) - (parseDate(b.dateFinPrevisionnelle) ?? 0))
-      .slice(0, 10),
-  [filteredTaches, nowTs]);
 
   if (loading) {
     return (
@@ -753,7 +724,7 @@ export default function DashboardPage() {
 
               {/* État d'avancement projet */}
               <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">État d&apos;avancement</label>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">État d&apos;avancement projet</label>
                 <select value={filterEtatAvanProjet} onChange={e => setFilterEtatAvanProjet(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
                   <option value="">Tous</option>
@@ -818,15 +789,6 @@ export default function DashboardPage() {
                 </select>
               </div>
 
-              {/* Statut tâche */}
-              <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Statut tâche</label>
-                <select value={filterStatut} onChange={e => setFilterStatut(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                  <option value="">Tous</option>
-                  {STATUTS_TACHES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
             </div>
 
             {/* Date range */}
@@ -1261,89 +1223,78 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* Graphiques — ligne 3 tâches : statut par avancement par ressource */}
-      <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${dashboardView === 'projet' ? 'hidden' : ''}`}>
-        <h3 className="text-base font-semibold text-slate-800 mb-3">Statut par état d'avancement par ressource <span className="text-xs font-normal text-slate-400 ml-1">(trié par priorité)</span></h3>
-        {resourceStatutParAvancement.length === 0 ? (
-          <p className="text-sm text-slate-400">Aucune assignation.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={Math.max(240, resourceStatutParAvancement.length * 44)}>
-            <BarChart data={resourceStatutParAvancement} margin={{ top: 16, right: 16, left: 8, bottom: 48 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-30} textAnchor="end" />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v: number, name: string) => [v, name]} />
-              <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '12px' }} />
-              <Bar dataKey="En avance"  stackId="a" fill="#22c55e" />
-              <Bar dataKey="À l'heure" stackId="a" fill="#3b82f6" />
-              <Bar dataKey="En retard"  stackId="a" fill="#f97316" />
-              <Bar dataKey="Hors délai" stackId="a" fill="#ef4444" radius={[4,4,0,0]}>
-                <LabelList
-                  valueAccessor={(e: Record<string, number>) =>
-                    (e['En avance']||0) + (e["À l'heure"]||0) + (e['En retard']||0) + (e['Hors délai']||0)}
-                  position="top"
-                  style={{ fontSize: 12, fontWeight: 600, fill: '#475569' }}
-                  formatter={(v: number) => v > 0 ? v : ''}
-                />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </section>
-
       {/* Graphiques — ligne 4 */}
       <section className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${dashboardView === 'projet' ? 'hidden' : ''}`}>
-        {/* Top tâches en retard */}
+        {/* Tâche par ressource */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="text-base font-semibold text-slate-800 mb-3">Tâches en retard</h3>
-          {tachesEnRetardDetails.length === 0 ? (
-            <p className="text-sm text-slate-400">Aucune tâche en retard.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
-                    <th className="py-2 pr-3">Tâche</th>
-                    <th className="py-2 pr-3">Projet</th>
-                    <th className="py-2 pr-3">Priorité</th>
-                    <th className="py-2 pr-3">Fin prév.</th>
-                    <th className="py-2">Statut</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tachesEnRetardDetails.map(t => {
-                    const prio = normalizePriority(t.priorite);
-                    const prioStyle: React.CSSProperties = prio === 'Bloquant'
-                      ? { backgroundColor: '#fee2e2', color: '#b91c1c' }
-                      : prio === 'Critique'
-                      ? { backgroundColor: '#fef9c3', color: '#a16207' }
-                      : { backgroundColor: '#dcfce7', color: '#15803d' };
-                    const statutColor = STATUT_TACHE_COLOR[t.statut] ?? '#94a3b8';
-                    return (
-                      <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="py-2 pr-3 font-medium text-slate-700 max-w-[160px] truncate">{t.libelle}</td>
-                        <td className="py-2 pr-3 text-slate-500 text-xs max-w-[120px] truncate">{t.projet?.libelle ?? '—'}</td>
-                        <td className="py-2 pr-3">
-                          <span className="rounded px-1.5 py-0.5 text-xs font-semibold" style={prioStyle}>{prio}</span>
-                        </td>
-                        <td className="py-2 pr-3 text-xs text-red-600 font-medium">
-                          {t.dateFinPrevisionnelle ? new Date(t.dateFinPrevisionnelle).toLocaleDateString('fr-FR') : '—'}
-                        </td>
-                        <td className="py-2">
-                          <span className="rounded px-1.5 py-0.5 text-xs font-semibold text-white" style={{ backgroundColor: statutColor }}>{t.statut}</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+            <h3 className="text-base font-semibold text-slate-800">Tâche par ressource</h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={filterTprStatut}
+                onChange={e => setFilterTprStatut(e.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">Tous statuts</option>
+                {['À faire','En cours','En revue','Bloqué','Terminé'].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select
+                value={filterTprEtat}
+                onChange={e => setFilterTprEtat(e.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">Tous états</option>
+                {ETATS_AV.map(e => <option key={e.key} value={e.key}>{e.label}</option>)}
+              </select>
+              <select
+                value={filterTprPrio}
+                onChange={e => setFilterTprPrio(e.target.value)}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">Toutes priorités</option>
+                {['Bloquant','Critique','Normal'].map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+              {(filterTprStatut || filterTprEtat || filterTprPrio) && (
+                <button type="button" onClick={() => { setFilterTprStatut(''); setFilterTprEtat(''); setFilterTprPrio(''); }}
+                  className="text-xs text-slate-400 hover:text-slate-600 underline">Réinitialiser</button>
+              )}
             </div>
-          )}
+          </div>
+          {(() => {
+            const counts: Record<string, number> = {};
+            filteredTaches
+              .filter(t =>
+                (!filterTprStatut || (t.statut === 'A faire' ? 'À faire' : t.statut) === filterTprStatut) &&
+                (!filterTprEtat   || (t.etatAvancement ?? '') === filterTprEtat) &&
+                (!filterTprPrio   || normalizePriority(t.priorite) === filterTprPrio)
+              )
+              .forEach(t => {
+                const name = t.assigneA ? `${t.assigneA.prenoms} ${t.assigneA.nom}` : 'Non assigné';
+                counts[name] = (counts[name] ?? 0) + 1;
+              });
+            const data = Object.entries(counts)
+              .map(([name, count]) => ({ name, count }))
+              .sort((a, b) => b.count - a.count);
+            if (data.length === 0) return <p className="text-sm text-slate-400">Aucune tâche.</p>;
+            return (
+              <ResponsiveContainer width="100%" height={Math.max(200, data.length * 40)}>
+                <BarChart data={data} layout="vertical" margin={{ top: 4, right: 40, left: 8, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: number) => [v, 'Tâches']} />
+                  <Bar dataKey="count" name="Tâches" fill="#6366f1" radius={[0, 4, 4, 0]}>
+                    <LabelList dataKey="count" position="right" style={{ fontSize: 11, fontWeight: 600, fill: '#475569' }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            );
+          })()}
         </div>
 
         {/* Top assignés */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="text-base font-semibold text-slate-800 mb-3">Charge par assigné</h3>
+          <h3 className="text-base font-semibold text-slate-800 mb-3">Tâche achevée par ressource</h3>
           {topAssignes.length === 0 ? (
             <p className="text-sm text-slate-400">Aucune assignation.</p>
           ) : (
@@ -1375,6 +1326,7 @@ export default function DashboardPage() {
           )}
         </div>
       </section>
+
     </div>
   );
 }
