@@ -630,6 +630,32 @@ export default function DashboardPage() {
     }).filter(e => STATUTS_TACHES.some(s => ((e[s === 'A faire' ? 'À faire' : s] as number) ?? 0) > 0)),
   [filteredTaches]);
 
+  // ── Statut par état d'avancement par ressource (trié par priorité) ──────────────
+  const resourceStatutParAvancement = useMemo(() => {
+    const AV_MAP: Record<string, string> = {
+      'en-avance': 'En avance', 'a-lheure': "À l'heure",
+      'retard': 'En retard', 'hors-delai': 'Hors délai',
+    };
+    const map = new Map<string, Record<string, string | number>>();
+    filteredTaches.forEach(t => {
+      if (!t.assigneA?.id) return;
+      const id = t.assigneA.id;
+      const name = `${t.assigneA.prenoms} ${t.assigneA.nom}`;
+      const entry = map.get(id) ?? {
+        name, _poids: 0,
+        'En avance': 0, "À l'heure": 0, 'En retard': 0, 'Hors délai': 0,
+      };
+      const av = AV_MAP[t.etatAvancement ?? ''];
+      if (av) entry[av] = ((entry[av] as number) || 0) + 1;
+      (entry._poids as number) && void 0; // type hint
+      entry._poids = ((entry._poids as number) || 0) + getPriorityWeight(t.priorite);
+      map.set(id, entry);
+    });
+    return Array.from(map.values())
+      .sort((a, b) => ((b._poids as number) || 0) - ((a._poids as number) || 0))
+      .slice(0, 12);
+  }, [filteredTaches]);
+
   // ── Tâches en retard (détail) ─────────────────────────────────────────────────
   const tachesEnRetardDetails = useMemo(() =>
     filteredTaches
@@ -1116,7 +1142,37 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* Graphiques — ligne 2 */}
+      {/* Graphiques — ligne 3 tâches : statut par avancement par ressource */}
+      <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${dashboardView === 'projet' ? 'hidden' : ''}`}>
+        <h3 className="text-base font-semibold text-slate-800 mb-3">Statut par état d'avancement par ressource <span className="text-xs font-normal text-slate-400 ml-1">(trié par priorité)</span></h3>
+        {resourceStatutParAvancement.length === 0 ? (
+          <p className="text-sm text-slate-400">Aucune assignation.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(240, resourceStatutParAvancement.length * 44)}>
+            <BarChart data={resourceStatutParAvancement} margin={{ top: 16, right: 16, left: 8, bottom: 48 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-30} textAnchor="end" />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v: number, name: string) => [v, name]} />
+              <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '12px' }} />
+              <Bar dataKey="En avance"  stackId="a" fill="#22c55e" />
+              <Bar dataKey="À l'heure" stackId="a" fill="#3b82f6" />
+              <Bar dataKey="En retard"  stackId="a" fill="#f97316" />
+              <Bar dataKey="Hors délai" stackId="a" fill="#ef4444" radius={[4,4,0,0]}>
+                <LabelList
+                  valueAccessor={(e: Record<string, number>) =>
+                    (e['En avance']||0) + (e["À l'heure"]||0) + (e['En retard']||0) + (e['Hors délai']||0)}
+                  position="top"
+                  style={{ fontSize: 12, fontWeight: 600, fill: '#475569' }}
+                  formatter={(v: number) => v > 0 ? v : ''}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </section>
+
+      {/* Graphiques — ligne 4 */}
       <section className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${dashboardView === 'projet' ? 'hidden' : ''}`}>
         {/* Top tâches en retard */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
