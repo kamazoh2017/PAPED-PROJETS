@@ -13,8 +13,7 @@
     "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
     "railway-build": "node scripts/railway-build.js",
-    "railway-start": "node scripts/railway-start.js",
-    "vercel-build": "npm run railway-build"
+    "railway-start": "node scripts/railway-start.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

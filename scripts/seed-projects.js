@@ -219,6 +219,20 @@ function getRiskColor(score) {
   return 'Rouge';
 }
 
+/**
+ * Calcule le statut projet depuis ses tâches — même logique que computeProjectStatut (TypeScript).
+ * Retourne null si le statut courant est Clôturé ou Suspendu (verrouillé manuellement).
+ */
+function computeProjectStatut(tasks, currentStatut) {
+  if (currentStatut === 'Clôturé' || currentStatut === 'Suspendu') return null;
+  if (tasks.length === 0) return 'En démarrage';
+  if (tasks.every((t) => t.statut === 'Validé')) return 'Clôturé';
+  if (tasks.every((t) => isTaskDone(t.statut))) return 'Terminé';
+  if (tasks.some((t) => t.statut === 'En cours' || t.statut === 'En attente')) return 'En cours';
+  if (tasks.some((t) => isTaskDone(t.statut))) return 'En cours';
+  return 'En démarrage';
+}
+
 // ─── Données projets ──────────────────────────────────────────────────────────
 
 const PROJETS = [
@@ -372,6 +386,11 @@ async function main() {
     const achevReel   = computeTauxAchevementReel(tachesAvecDates);
     const achevAtt    = computeTauxAchevementAttendu(tachesAvecDates, NOW);
     const etatProjet  = computeEtatAvancementProjet(projetFields, avancReel, avancAtt, NOW);
+
+    // ── Statut calculé depuis les tâches (cohérence garantie) ──────────────
+    const statutCalcule = computeProjectStatut(tachesAvecDates, projetFields.statut);
+    // statutCalcule === null signifie que le statut est verrouillé (Clôturé/Suspendu)
+    projetFields.statut = statutCalcule ?? projetFields.statut;
 
     // ── Upsert projet ───────────────────────────────────────────────────────
     const existant = await prisma.projet.findUnique({ where: { libelle: projetFields.libelle } });

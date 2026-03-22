@@ -31,9 +31,10 @@ Railway automatically injects the PostgreSQL connection string. Verify in your p
 - **Copy the generated URL**: Click the key icon next to the connection string
 - **In the Next.js service**, Railway auto-links it as `DATABASE_URL`
 
-Additionally, add if needed:
+Additionally, add:
 ```
 NODE_ENV=production
+CRON_SECRET=<valeur_aléatoire_secrète>
 ```
 
 ## 6. Configure Build Command
@@ -100,9 +101,9 @@ and `prisma db seed` before starting the app. If `DATABASE_URL` is SQLite (local
 # Auto-set by Railway (PostgreSQL plugin)
 DATABASE_URL=postgresql://user:password@host:port/database
 
-# Generated at runtime
-SESSION_COOKIE=pape_session
+# À définir manuellement
 NODE_ENV=production
+CRON_SECRET=<valeur_aléatoire_secrète>
 ```
 
 ### Scaling & Monitoring
@@ -117,4 +118,9 @@ NODE_ENV=production
 2. Test all auth flows (login, session persistence, redirect logic)
 3. Optional: Add custom domain
 4. Optional: Set up automatic deployments for `preprod` branch to staging instance
+5. Configurer le Cron journalier (recalcul des métriques) :
+   - Railway Dashboard → New Service → Empty Service → Cron
+   - Schedule : `5 0 * * *`
+   - Command : `curl -f -H "Authorization: Bearer $CRON_SECRET" https://<votre-app>.railway.app/api/cron/refresh-all`
+   - Ajouter la variable `CRON_SECRET` sur ce service (même valeur que le service principal)
 
