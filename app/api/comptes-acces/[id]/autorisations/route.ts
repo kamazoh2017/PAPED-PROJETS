@@ -50,21 +50,17 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const compte = await prisma.compteAcces.findUnique({ where: { id } });
     if (!compte) return NextResponse.json({ error: 'Compte introuvable.' }, { status: 404 });
 
-    await prisma.$transaction(
-      permissions.map((perm: { pageKey: string; actionKey: string; autorise: boolean }) =>
-        prisma.permissionPageAction.upsert({
-          where: {
-            compteId_pageKey_actionKey: {
-              compteId: id,
-              pageKey: String(perm.pageKey),
-              actionKey: String(perm.actionKey),
-            },
-          },
-          update:  { autorise: Boolean(perm.autorise) },
-          create:  { compteId: id, pageKey: String(perm.pageKey), actionKey: String(perm.actionKey), autorise: Boolean(perm.autorise) },
-        })
-      )
-    );
+    await prisma.$transaction([
+      prisma.permissionPageAction.deleteMany({ where: { compteId: id } }),
+      prisma.permissionPageAction.createMany({
+        data: permissions.map((perm: { pageKey: string; actionKey: string; autorise: boolean }) => ({
+          compteId: id,
+          pageKey:   String(perm.pageKey),
+          actionKey: String(perm.actionKey),
+          autorise:  Boolean(perm.autorise),
+        })),
+      }),
+    ]);
 
     return NextResponse.json({ success: true });
   } catch {
