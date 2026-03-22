@@ -23,6 +23,7 @@ interface Projet {
   id: string;
   libelle: string;
   statut: string;
+  etatAvancement?: string;
   dateCreation: string;
   dateDebutPrevisionnelle?: string;
   dateFinPrevisionnelle?: string;
@@ -32,6 +33,15 @@ interface Projet {
 }
 
 const STATUTS_TACHES = ['À planifier', 'A faire', 'En cours', 'En attente', 'Terminé', 'Validé'];
+
+const STATUT_TACHE_COLOR: Record<string, string> = {
+  'À planifier': '#94a3b8',  // slate
+  'A faire':     '#3b82f6',  // bleu
+  'En cours':    '#f59e0b',  // ambre
+  'En attente':  '#ef4444',  // rouge
+  'Terminé':     '#22c55e',  // vert clair
+  'Validé':      '#10b981',  // vert émeraude
+};
 
 function parseDate(value?: string): number | null {
   if (!value) return null;
@@ -107,12 +117,12 @@ function getRiskLevel(score: number): 'Faible' | 'Moyen' | 'Élevé' | 'Critique
   return 'Critique';
 }
 
-function getRiskScoreBadgeClasses(score: number): string {
+function getRiskScoreBadgeStyle(score: number): React.CSSProperties {
   const level = getRiskLevel(score);
-  if (level === 'Critique') return 'bg-red-100 text-red-700';
-  if (level === 'Élevé') return 'bg-orange-100 text-orange-700';
-  if (level === 'Moyen') return 'bg-amber-100 text-amber-700';
-  return 'bg-emerald-100 text-emerald-700';
+  if (level === 'Critique') return { backgroundColor: '#fee2e2', color: '#b91c1c' };
+  if (level === 'Élevé')    return { backgroundColor: '#ffedd5', color: '#c2410c' };
+  if (level === 'Moyen')    return { backgroundColor: '#fef9c3', color: '#a16207' };
+  return { backgroundColor: '#dcfce7', color: '#15803d' };
 }
 
 function getExpectedProgressByPlannedTime(project: Projet, nowTs: number): number {
@@ -345,7 +355,10 @@ export default function DashboardPage() {
   );
 
   const projectAvancement = useMemo(
-    () => projets.map((project) => ({ project, avancement: getProjectAvancement(project, nowTs) })),
+    () => projets.map((project) => ({
+      project,
+      avancement: (project.etatAvancement ?? getProjectAvancement(project, nowTs)) as Avancement,
+    })),
     [projets, nowTs]
   );
 
@@ -371,18 +384,18 @@ export default function DashboardPage() {
   const projectsEnAvance = projectAvancement.filter((p) => p.avancement === 'en-avance').length;
 
   const statusPieData = [
-    { name: 'Non démarrés', value: projectsNonDemarres, color: '#94a3b8' },
-    { name: 'En cours',     value: projectsEnCours,    color: '#3b82f6' },
-    { name: 'Terminés',     value: projectsTermines,   color: '#10b981' },
-    { name: 'Clôturés',     value: projectsClotures,   color: '#0891b2' },
-    { name: 'Suspendus',    value: projectsSuspendus,  color: '#7c3aed' },
+    { name: 'En démarrage', value: projectsNonDemarres, color: '#3b82f6' },  // bleu
+    { name: 'En cours',     value: projectsEnCours,     color: '#f97316' },  // orange
+    { name: 'Terminés',     value: projectsTermines,    color: '#22c55e' },  // vert clair
+    { name: 'Clôturés',     value: projectsClotures,    color: '#065f46' },  // vert foncé
+    { name: 'Suspendus',    value: projectsSuspendus,   color: '#ef4444' },  // rouge
   ];
 
   const avancementPieData = [
-    { name: 'En retard',  value: projectsRetard,    color: '#ef4444' },
-    { name: 'A l\'heure', value: projectsALHeure,   color: '#f59e0b' },
-    { name: 'Hors délai', value: projectsHorsDelai, color: '#f97316' },
-    { name: 'En avance',  value: projectsEnAvance,  color: '#22c55e' },
+    { name: 'En retard',  value: projectsRetard,    color: '#f97316' },  // orange
+    { name: 'À l\'heure', value: projectsALHeure,   color: '#3b82f6' },  // bleu
+    { name: 'Hors délai', value: projectsHorsDelai, color: '#ef4444' },  // rouge
+    { name: 'En avance',  value: projectsEnAvance,  color: '#22c55e' },  // vert
   ];
 
   const riskByProject = useMemo(
@@ -527,12 +540,66 @@ export default function DashboardPage() {
     return series;
   }, [projets, periodeAvancement]);
 
-  const tasksByStatus = STATUTS_TACHES.map((status) => ({ status, value: filteredTaches.filter((t) => t.statut === status).length }));
-  const tasksByPriority = [
-    { label: 'Bloquant', value: filteredTaches.filter((t) => normalizePriority(t.priorite) === 'Bloquant').length, color: 'bg-red-500' },
-    { label: 'Critique', value: filteredTaches.filter((t) => normalizePriority(t.priorite) === 'Critique').length, color: 'bg-amber-500' },
-    { label: 'Normal', value: filteredTaches.filter((t) => normalizePriority(t.priorite) === 'Normal').length, color: 'bg-green-500' },
-  ];
+  // ── KPIs tâches ──────────────────────────────────────────────────────────────
+  const totalTachesFiltered   = filteredTaches.length;
+  const tachesEnCoursCount    = filteredTaches.filter(t => t.statut === 'En cours').length;
+  const tachesEnAttenteCount  = filteredTaches.filter(t => t.statut === 'En attente').length;
+  const tachesTermineesCount  = filteredTaches.filter(t => t.statut === 'Terminé').length;
+  const tachesValideesCount   = filteredTaches.filter(t => t.statut === 'Validé').length;
+  const tachesAFaireCount     = filteredTaches.filter(t => t.statut === 'A faire').length;
+  const tachesAcheveesCount      = tachesTermineesCount + tachesValideesCount;
+  const tauxAchevementTaches     = safePct(tachesAcheveesCount, totalTachesFiltered);
+  const tachesNonAssigneesCount = filteredTaches.filter(t => !t.assigneA).length;
+  const tachesBloquantesCount = filteredTaches.filter(t => normalizePriority(t.priorite) === 'Bloquant').length;
+  const tachesEnRetardCount   = filteredTaches.filter(t => {
+    const fin = parseDate(t.dateFinPrevisionnelle);
+    return fin !== null && nowTs > fin && !isTaskDone(t.statut);
+  }).length;
+
+  // ── Pie statut tâches ────────────────────────────────────────────────────────
+  const taskStatusPieData = STATUTS_TACHES
+    .map(s => ({ name: s === 'A faire' ? 'À faire' : s, value: filteredTaches.filter(t => t.statut === s).length, color: STATUT_TACHE_COLOR[s] ?? '#94a3b8' }))
+    .filter(d => d.value > 0);
+
+  // ── Pie priorité tâches ──────────────────────────────────────────────────────
+  const taskPrioriteData = [
+    { name: 'Bloquant', value: filteredTaches.filter(t => normalizePriority(t.priorite) === 'Bloquant').length, color: '#ef4444' },
+    { name: 'Critique', value: filteredTaches.filter(t => normalizePriority(t.priorite) === 'Critique').length, color: '#f59e0b' },
+    { name: 'Normal',   value: filteredTaches.filter(t => normalizePriority(t.priorite) === 'Normal').length,   color: '#22c55e' },
+  ].filter(d => d.value > 0);
+
+  // ── Avancement tâches par projet ─────────────────────────────────────────────
+  const avancementParProjet = useMemo(() =>
+    projets.map(p => {
+      const tp = filteredTaches.filter(t => (t.projetId ?? t.projet?.id) === p.id);
+      const done = tp.filter(t => isTaskDone(t.statut)).length;
+      return { name: p.libelle.length > 22 ? p.libelle.slice(0, 22) + '…' : p.libelle, done, restant: tp.length - done, total: tp.length };
+    }).filter(p => p.total > 0).sort((a, b) => b.total - a.total).slice(0, 8),
+  [projets, filteredTaches]);
+
+  // ── Top assignés ─────────────────────────────────────────────────────────────
+  const topAssignes = useMemo(() => {
+    const map = new Map<string, { name: string; total: number; done: number; retard: number }>();
+    filteredTaches.forEach(t => {
+      if (!t.assigneA?.id) return;
+      const id = t.assigneA.id;
+      const entry = map.get(id) ?? { name: `${t.assigneA.prenoms} ${t.assigneA.nom}`, total: 0, done: 0, retard: 0 };
+      entry.total += 1;
+      if (isTaskDone(t.statut)) entry.done += 1;
+      const fin = parseDate(t.dateFinPrevisionnelle);
+      if (fin && nowTs > fin && !isTaskDone(t.statut)) entry.retard += 1;
+      map.set(id, entry);
+    });
+    return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 8);
+  }, [filteredTaches, nowTs]);
+
+  // ── Tâches en retard (détail) ─────────────────────────────────────────────────
+  const tachesEnRetardDetails = useMemo(() =>
+    filteredTaches
+      .filter(t => { const fin = parseDate(t.dateFinPrevisionnelle); return fin !== null && nowTs > fin && !isTaskDone(t.statut); })
+      .sort((a, b) => getPriorityWeight(b.priorite) - getPriorityWeight(a.priorite) || (parseDate(a.dateFinPrevisionnelle) ?? 0) - (parseDate(b.dateFinPrevisionnelle) ?? 0))
+      .slice(0, 10),
+  [filteredTaches, nowTs]);
 
   if (loading) {
     return (
@@ -612,16 +679,16 @@ export default function DashboardPage() {
 
       <section className={`space-y-3 ${dashboardView === 'taches' ? 'hidden' : ''}`}>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-10">
-          <MetricCard title="Total projets" value={totalProjects} compact />
-          <MetricCard title="Trermines" value={projectsTermines} rightValue={`${pctProjectsTermines}%`} tone="text-emerald-600" compact />
-          <MetricCard title="Clotures" value={projectsClotures} rightValue={`${pctProjectsClotures}%`} tone="text-cyan-700" compact />
-          <MetricCard title="% achevement" value={`${tauxAchevement}%`} tone="text-emerald-600" compact />
-          <MetricCard title="En cours" value={projectsEnCours} rightValue={`${pctProjectsEnCours}%`} tone="text-blue-600" compact />
-          <MetricCard title="% Progression" value={`${tauxProgressionGlobal}%`} tone="text-blue-600" compact />
-          <MetricCard title="En retard" value={projectsRetard} rightValue={`${pctProjectsRetard}%`} tone="text-red-600" compact />
-          <MetricCard title="Hors delais" value={projectsHorsDelai} rightValue={`${pctProjectsHorsDelai}%`} tone="text-orange-600" compact />
-          <MetricCard title="Non demarres" value={projectsNonDemarres} rightValue={`${pctProjectsNonDemarres}%`} tone="text-slate-700" compact />
-          <MetricCard title="Suspendus" value={projectsSuspendus} rightValue={`${pctProjectsSuspendus}%`} tone="text-violet-700" compact />
+          <MetricCard title="Total projets"  value={totalProjects} compact />
+          <MetricCard title="Terminés"       value={projectsTermines}    rightValue={`${pctProjectsTermines}%`}    tone="text-green-600"  compact />
+          <MetricCard title="Clôturés"       value={projectsClotures}    rightValue={`${pctProjectsClotures}%`}    tone="text-emerald-700" compact />
+          <MetricCard title="% Achèvement"   value={`${tauxAchevement}%`}                                          tone="text-emerald-600" compact />
+          <MetricCard title="En cours"       value={projectsEnCours}     rightValue={`${pctProjectsEnCours}%`}     tone="text-orange-600" compact />
+          <MetricCard title="% Progression"  value={`${tauxProgressionGlobal}%`}                                   tone="text-orange-600" compact />
+          <MetricCard title="En retard"      value={projectsRetard}      rightValue={`${pctProjectsRetard}%`}      tone="text-red-600"    compact />
+          <MetricCard title="Hors délais"    value={projectsHorsDelai}   rightValue={`${pctProjectsHorsDelai}%`}   tone="text-orange-500" compact />
+          <MetricCard title="En démarrage"   value={projectsNonDemarres} rightValue={`${pctProjectsNonDemarres}%`} tone="text-blue-600"   compact />
+          <MetricCard title="Suspendus"      value={projectsSuspendus}   rightValue={`${pctProjectsSuspendus}%`}   tone="text-red-600"    compact />
         </div>
       </section>
 
@@ -723,9 +790,9 @@ export default function DashboardPage() {
               <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11 }} />
               <Tooltip />
               <Legend />
-              <Bar dataKey="A l'heure" stackId="a" fill="#22c55e" />
-              <Bar dataKey="En retard" stackId="a" fill="#ef4444" />
-              <Bar dataKey="Hors délais" stackId="a" fill="#f97316" />
+              <Bar dataKey="A l'heure"  stackId="a" fill="#22c55e" />
+              <Bar dataKey="En retard"  stackId="a" fill="#f97316" />
+              <Bar dataKey="Hors délais" stackId="a" fill="#ef4444" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -807,19 +874,19 @@ export default function DashboardPage() {
                   <tr key={project.id} className="border-b border-slate-100">
                     <td className="py-2 pr-4 font-medium text-slate-700">{project.libelle}</td>
                     <td className="py-2 pr-3">
-                      <span className={`rounded px-2 py-1 text-xs font-semibold ${getRiskScoreBadgeClasses(risk.global)}`}>{risk.global}%</span>
+                      <span className="rounded px-2 py-1 text-xs font-semibold" style={getRiskScoreBadgeStyle(risk.global)}>{risk.global}%</span>
                     </td>
                     <td className="py-2 pr-3">
-                      <span className={`rounded px-2 py-1 text-xs font-semibold ${getRiskScoreBadgeClasses(risk.retard)}`}>{risk.retard}%</span>
+                      <span className="rounded px-2 py-1 text-xs font-semibold" style={getRiskScoreBadgeStyle(risk.retard)}>{risk.retard}%</span>
                     </td>
                     <td className="py-2 pr-3">
-                      <span className={`rounded px-2 py-1 text-xs font-semibold ${getRiskScoreBadgeClasses(risk.horsDelai)}`}>{risk.horsDelai}%</span>
+                      <span className="rounded px-2 py-1 text-xs font-semibold" style={getRiskScoreBadgeStyle(risk.horsDelai)}>{risk.horsDelai}%</span>
                     </td>
                     <td className="py-2 pr-3">
-                      <span className={`rounded px-2 py-1 text-xs font-semibold ${getRiskScoreBadgeClasses(risk.progression)}`}>{risk.progression}%</span>
+                      <span className="rounded px-2 py-1 text-xs font-semibold" style={getRiskScoreBadgeStyle(risk.progression)}>{risk.progression}%</span>
                     </td>
                     <td className="py-2 pr-3">
-                      <span className={`rounded px-2 py-1 text-xs font-semibold ${getRiskScoreBadgeClasses(risk.suspendu)}`}>{risk.suspendu}%</span>
+                      <span className="rounded px-2 py-1 text-xs font-semibold" style={getRiskScoreBadgeStyle(risk.suspendu)}>{risk.suspendu}%</span>
                     </td>
                   </tr>
                 ))}
@@ -829,18 +896,153 @@ export default function DashboardPage() {
         )}
       </section>
 
-      <section className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${dashboardView === 'projet' ? 'hidden' : ''}`}>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-          <h3 className="text-lg font-semibold text-slate-800">Flux des taches</h3>
-          {tasksByStatus.map((item) => (
-            <DistributionRow key={item.status} label={item.status} value={item.value} total={filteredTaches.length} color="bg-secondary" />
-          ))}
+      {/* ═══════════════════ DASHBOARD TÂCHES ═══════════════════ */}
+
+      {/* KPIs tâches */}
+      <section className={`space-y-3 ${dashboardView === 'projet' ? 'hidden' : ''}`}>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-10">
+          <MetricCard title="Total tâches"    value={totalTachesFiltered} compact />
+          <MetricCard title="En cours"        value={tachesEnCoursCount}   rightValue={`${safePct(tachesEnCoursCount, totalTachesFiltered)}%`}   tone="text-amber-600"   compact />
+          <MetricCard title="En attente"      value={tachesEnAttenteCount} rightValue={`${safePct(tachesEnAttenteCount, totalTachesFiltered)}%`} tone="text-purple-600"  compact />
+          <MetricCard title="À faire"         value={tachesAFaireCount}    rightValue={`${safePct(tachesAFaireCount, totalTachesFiltered)}%`}    tone="text-blue-600"    compact />
+          <MetricCard title="Terminées"       value={tachesTermineesCount} rightValue={`${safePct(tachesTermineesCount, totalTachesFiltered)}%`} tone="text-green-600"   compact />
+          <MetricCard title="Validées"        value={tachesValideesCount}  rightValue={`${safePct(tachesValideesCount, totalTachesFiltered)}%`}  tone="text-emerald-600" compact />
+          <MetricCard title="% Achèvement"    value={`${tauxAchevementTaches}%`}                                                                    tone="text-emerald-600" compact />
+          <MetricCard title="En retard"       value={tachesEnRetardCount}  rightValue={`${safePct(tachesEnRetardCount, totalTachesFiltered)}%`}  tone="text-red-600"     compact />
+          <MetricCard title="Non assignées"   value={tachesNonAssigneesCount} rightValue={`${safePct(tachesNonAssigneesCount, totalTachesFiltered)}%`} tone="text-slate-500" compact />
+          <MetricCard title="Bloquantes"      value={tachesBloquantesCount} rightValue={`${safePct(tachesBloquantesCount, totalTachesFiltered)}%`} tone="text-red-600"   compact />
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-          <h3 className="text-lg font-semibold text-slate-800">Poids par priorite</h3>
-          {tasksByPriority.map((item) => (
-            <DistributionRow key={item.label} label={item.label} value={item.value} total={filteredTaches.length} color={item.color} />
-          ))}
+      </section>
+
+      {/* Graphiques — ligne 1 */}
+      <section className={`grid grid-cols-1 gap-4 lg:grid-cols-3 ${dashboardView === 'projet' ? 'hidden' : ''}`}>
+        {/* Pie statut */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-800 mb-2">Répartition par statut</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <PieChart>
+              <Pie data={taskStatusPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
+                {taskStatusPieData.map((e, i) => <Cell key={i} fill={e.color} />)}
+              </Pie>
+              <Tooltip formatter={(v: number) => [v, 'tâches']} />
+              <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '12px' }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Pie priorité */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-800 mb-2">Répartition par priorité</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <PieChart>
+              <Pie data={taskPrioriteData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
+                {taskPrioriteData.map((e, i) => <Cell key={i} fill={e.color} />)}
+              </Pie>
+              <Tooltip formatter={(v: number) => [v, 'tâches']} />
+              <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '12px' }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Bar avancement par projet */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-800 mb-2">Avancement tâches par projet</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={avancementParProjet} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+              <YAxis dataKey="name" type="category" width={110} tick={{ fontSize: 10 }} />
+              <Tooltip formatter={(v: number, name: string) => [v, name === 'done' ? 'Achevées' : 'Restantes']} />
+              <Legend wrapperStyle={{ fontSize: '12px' }} formatter={(v) => v === 'done' ? 'Achevées' : 'Restantes'} />
+              <Bar dataKey="done"    stackId="a" fill="#22c55e" name="done" />
+              <Bar dataKey="restant" stackId="a" fill="#e2e8f0" name="restant" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+
+      {/* Graphiques — ligne 2 */}
+      <section className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${dashboardView === 'projet' ? 'hidden' : ''}`}>
+        {/* Top tâches en retard */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-800 mb-3">Tâches en retard</h3>
+          {tachesEnRetardDetails.length === 0 ? (
+            <p className="text-sm text-slate-400">Aucune tâche en retard.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-xs text-slate-400">
+                    <th className="py-2 pr-3">Tâche</th>
+                    <th className="py-2 pr-3">Projet</th>
+                    <th className="py-2 pr-3">Priorité</th>
+                    <th className="py-2 pr-3">Fin prév.</th>
+                    <th className="py-2">Statut</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tachesEnRetardDetails.map(t => {
+                    const prio = normalizePriority(t.priorite);
+                    const prioStyle: React.CSSProperties = prio === 'Bloquant'
+                      ? { backgroundColor: '#fee2e2', color: '#b91c1c' }
+                      : prio === 'Critique'
+                      ? { backgroundColor: '#fef9c3', color: '#a16207' }
+                      : { backgroundColor: '#dcfce7', color: '#15803d' };
+                    const statutColor = STATUT_TACHE_COLOR[t.statut] ?? '#94a3b8';
+                    return (
+                      <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="py-2 pr-3 font-medium text-slate-700 max-w-[160px] truncate">{t.libelle}</td>
+                        <td className="py-2 pr-3 text-slate-500 text-xs max-w-[120px] truncate">{t.projet?.libelle ?? '—'}</td>
+                        <td className="py-2 pr-3">
+                          <span className="rounded px-1.5 py-0.5 text-xs font-semibold" style={prioStyle}>{prio}</span>
+                        </td>
+                        <td className="py-2 pr-3 text-xs text-red-600 font-medium">
+                          {t.dateFinPrevisionnelle ? new Date(t.dateFinPrevisionnelle).toLocaleDateString('fr-FR') : '—'}
+                        </td>
+                        <td className="py-2">
+                          <span className="rounded px-1.5 py-0.5 text-xs font-semibold text-white" style={{ backgroundColor: statutColor }}>{t.statut}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Top assignés */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-800 mb-3">Charge par assigné</h3>
+          {topAssignes.length === 0 ? (
+            <p className="text-sm text-slate-400">Aucune assignation.</p>
+          ) : (
+            <div className="space-y-3">
+              {topAssignes.map((a, i) => {
+                const pctDone   = safePct(a.done, a.total);
+                const pctRetard = safePct(a.retard, a.total);
+                return (
+                  <div key={i} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-slate-700 truncate max-w-[180px]">{a.name}</span>
+                      <span className="text-slate-400 flex-shrink-0 ml-2">
+                        {a.total} tâche{a.total > 1 ? 's' : ''}
+                        {a.retard > 0 && <span className="ml-2 text-red-500">· {a.retard} en retard</span>}
+                      </span>
+                    </div>
+                    <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden flex">
+                      <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pctDone}%` }} />
+                      <div className="h-full bg-red-400 transition-all"     style={{ width: `${pctRetard}%` }} />
+                    </div>
+                    <div className="flex gap-3 text-[10px] text-slate-400">
+                      <span><span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1" />Achevées {pctDone}%</span>
+                      {pctRetard > 0 && <span><span className="inline-block w-2 h-2 rounded-full bg-red-400 mr-1" />Retard {pctRetard}%</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
     </div>
