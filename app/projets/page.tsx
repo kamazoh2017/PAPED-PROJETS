@@ -8,6 +8,7 @@ interface Projet {
   libelle: string;
   description?: string;
   statut: string;
+  etatAvancement?: string;
   dateCreation: string;
   dateDebutPrevisionnelle?: string;
   dateFinPrevisionnelle?: string;
@@ -24,12 +25,24 @@ interface Personne {
   estChefProjet?: boolean;
 }
 
-type Avancement = 'retard' | 'en-avance' | 'hors-delai';
+type Avancement = 'a-lheure' | 'retard' | 'en-avance' | 'hors-delai';
+
+function getProjetStatutStyle(statut: string): React.CSSProperties {
+  switch (statut) {
+    case 'En démarrage': return { backgroundColor: '#dbeafe', color: '#1d4ed8' };
+    case 'En cours':     return { backgroundColor: '#ffedd5', color: '#c2410c' };
+    case 'Terminé':      return { backgroundColor: '#dcfce7', color: '#15803d' };
+    case 'Clôturé':      return { backgroundColor: '#065f46', color: '#ffffff' };
+    case 'Suspendu':     return { backgroundColor: '#fee2e2', color: '#b91c1c' };
+    default:             return { backgroundColor: '#dbeafe', color: '#1d4ed8' };
+  }
+}
 
 const AVANCEMENT_CONFIG: Record<Avancement, { label: string; classes: string }> = {
-  retard:       { label: 'En retard',  classes: 'bg-red-100 text-red-700' },
+  'a-lheure':   { label: 'À l\'heure', classes: 'bg-blue-100 text-blue-700' },
+  retard:       { label: 'En retard',  classes: 'bg-orange-100 text-orange-700' },
   'en-avance':  { label: 'En avance',  classes: 'bg-green-100 text-green-700' },
-  'hors-delai': { label: 'Hors délai', classes: 'bg-orange-100 text-orange-700' },
+  'hors-delai': { label: 'Hors délai', classes: 'bg-red-100 text-red-700' },
 };
 
 function getAvanancementProjet(projet: Projet): Avancement | null {
@@ -109,7 +122,15 @@ export default function ProjetsPage() {
     setFormError('');
 
     if (!formData.chefProjetId) {
-      setFormError('Veuillez selectionner un chef de projet.');
+      setFormError('Veuillez sélectionner un chef de projet.');
+      return;
+    }
+    if (!formData.dateDebutPrevisionnelle) {
+      setFormError('La date de début prévisionnelle est obligatoire.');
+      return;
+    }
+    if (!formData.dateFinPrevisionnelle) {
+      setFormError('La date de fin prévisionnelle est obligatoire.');
       return;
     }
 
@@ -121,6 +142,8 @@ export default function ProjetsPage() {
           libelle: formData.libelle,
           description: formData.description,
           chefProjetId: formData.chefProjetId,
+          dateDebutPrevisionnelle: formData.dateDebutPrevisionnelle,
+          dateFinPrevisionnelle: formData.dateFinPrevisionnelle,
         }),
       });
 
@@ -194,18 +217,21 @@ export default function ProjetsPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Début prévisionnel</label>
+              <label className="block text-sm font-medium text-gray-700">Début prévisionnel <span className="text-red-500">*</span></label>
               <input
                 type="date"
+                required
                 value={formData.dateDebutPrevisionnelle}
                 onChange={(e) => setFormData({ ...formData, dateDebutPrevisionnelle: e.target.value })}
                 className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Fin prévisionnelle</label>
+              <label className="block text-sm font-medium text-gray-700">Fin prévisionnelle <span className="text-red-500">*</span></label>
               <input
                 type="date"
+                required
+                min={formData.dateDebutPrevisionnelle || undefined}
                 value={formData.dateFinPrevisionnelle}
                 onChange={(e) => setFormData({ ...formData, dateFinPrevisionnelle: e.target.value })}
                 className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
@@ -238,8 +264,8 @@ export default function ProjetsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {projets.map((projet) => {
-            const avancement = getAvanancementProjet(projet);
-            const avCfg = avancement ? AVANCEMENT_CONFIG[avancement] : null;
+            const avancement = (projet.etatAvancement ?? getAvanancementProjet(projet)) as Avancement | null;
+            const avCfg = avancement ? (AVANCEMENT_CONFIG[avancement] ?? null) : null;
             return (
             <Link
               key={projet.id}
@@ -251,7 +277,7 @@ export default function ProjetsPage() {
                 <p className="text-gray-600 text-sm mb-4 line-clamp-2">{projet.description}</p>
               )}
               <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
-                <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-medium">
+                <span className="inline-block px-2 py-1 rounded text-sm font-medium" style={getProjetStatutStyle(projet.statut)}>
                   {projet.statut}
                 </span>
                 {avCfg && (
