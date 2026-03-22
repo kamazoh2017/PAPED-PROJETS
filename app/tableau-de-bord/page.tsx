@@ -16,10 +16,12 @@ interface Tache {
   dateDebutEffective?: string;
   dateFinEffective?: string;
   projet?: { libelle: string; id: string };
-  assigneA?: { id: string; nom: string; prenoms: string };
+  assigneA?: { id: string; nom: string; prenoms: string; entiteId?: string };
   etatAvancement?: string;
   progression?: number;
 }
+
+interface Entite { id: string; libelle: string; }
 
 interface Projet {
   id: string;
@@ -267,15 +269,26 @@ export default function DashboardPage() {
   const [filterChefProjet, setFilterChefProjet] = useState('');
   const [periodeAvancement, setPeriodeAvancement] = useState<'jours' | 'semaines' | 'mois'>('semaines');
   const [dashboardView, setDashboardView] = useState<'projet' | 'taches'>('taches');
+  const [entites, setEntites] = useState<Entite[]>([]);
+  const [filterStatutProjet, setFilterStatutProjet] = useState('');
+  const [filterEtatAvanProjet, setFilterEtatAvanProjet] = useState('');
+  const [filterRisqueProjet, setFilterRisqueProjet] = useState('');
+  const [filterDateDebut, setFilterDateDebut] = useState('');
+  const [filterDateFin, setFilterDateFin] = useState('');
+  const [filterChefId, setFilterChefId] = useState('');
+  const [filterPersonneId, setFilterPersonneId] = useState('');
+  const [filterEntiteId, setFilterEntiteId] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [proRes, tRes] = await Promise.all([fetch('/api/projets'), fetch('/api/taches')]);
+        const [proRes, tRes, entRes] = await Promise.all([fetch('/api/projets'), fetch('/api/taches'), fetch('/api/entites')]);
         const projetsData = await proRes.json();
         const tachesData = await tRes.json();
+        const entitesData = await entRes.json();
         setProjets(Array.isArray(projetsData) ? projetsData : []);
         setTaches(Array.isArray(tachesData) ? tachesData : []);
+        setEntites(Array.isArray(entitesData) ? entitesData : []);
       } catch (error) {
         console.error('Erreur:', error);
       } finally {
@@ -332,30 +345,66 @@ export default function DashboardPage() {
 
   const nowTs = Date.now();
 
+  const filteredProjets = useMemo(() =>
+    projets.filter(p => {
+      if (filterStatutProjet && p.statut !== filterStatutProjet) return false;
+      if (filterEtatAvanProjet) {
+        const av = (p.etatAvancement ?? getProjectAvancement(p, nowTs)) as string;
+        if (av !== filterEtatAvanProjet) return false;
+      }
+      if (filterRisqueProjet) {
+        const risk = getProjectRiskScores(p, nowTs);
+        if (risk.level !== filterRisqueProjet) return false;
+      }
+      if (filterDateDebut) {
+        const ts = parseDate(p.dateDebutPrevisionnelle);
+        if (ts === null || ts < new Date(filterDateDebut).getTime()) return false;
+      }
+      if (filterDateFin) {
+        const ts = parseDate(p.dateFinPrevisionnelle);
+        if (ts === null || ts > new Date(filterDateFin).getTime()) return false;
+      }
+      if (filterChefId && p.chefProjet?.id !== filterChefId) return false;
+      return true;
+    }),
+  [projets, filterStatutProjet, filterEtatAvanProjet, filterRisqueProjet, filterDateDebut, filterDateFin, filterChefId, nowTs]);
+
+  const filteredProjetIds = useMemo(() => new Set(filteredProjets.map(p => p.id)), [filteredProjets]);
+
   const filteredTaches = useMemo(
     () =>
       taches.filter((t) => {
-        if (filterProjet && t.projet?.id !== filterProjet && t.projetId !== filterProjet) return false;
+        const pid = t.projetId ?? t.projet?.id ?? '';
+        // Filtre par projet sélectionné manuellement
+        if (filterProjet && pid !== filterProjet) return false;
+        // Filtre par projets issus des filtres projet (si actifs)
+        const hasProjetFilter = !!(filterStatutProjet || filterEtatAvanProjet || filterRisqueProjet || filterDateDebut || filterDateFin || filterChefId);
+        if (hasProjetFilter && !filteredProjetIds.has(pid)) return false;
+        // Filtre statut tâche
         if (filterStatut && t.statut !== filterStatut) return false;
+        // Filtre personne
+        if (filterPersonneId && t.assigneA?.id !== filterPersonneId) return false;
+        // Filtre entité
+        if (filterEntiteId && t.assigneA?.entiteId !== filterEntiteId) return false;
         return true;
       }),
-    [taches, filterProjet, filterStatut]
+    [taches, filterProjet, filterStatut, filterPersonneId, filterEntiteId, filteredProjetIds, filterStatutProjet, filterEtatAvanProjet, filterRisqueProjet, filterDateDebut, filterDateFin, filterChefId]
   );
 
   const projectAvancement = useMemo(
-    () => projets.map((project) => ({
+    () => filteredProjets.map((project) => ({
       project,
       avancement: (project.etatAvancement ?? getProjectAvancement(project, nowTs)) as Avancement,
     })),
-    [projets, nowTs]
+    [filteredProjets, nowTs]
   );
 
-  const totalProjects = projets.length;
-  const projectsTermines = projets.filter((p) => p.statut === 'Terminé').length;
-  const projectsClotures = projets.filter((p) => p.statut === 'Clôturé').length;
-  const projectsEnCours = projets.filter((p) => p.statut === 'En cours').length;
-  const projectsNonDemarres = projets.filter((p) => p.statut === 'En démarrage').length;
-  const projectsSuspendus = projets.filter((p) => p.statut === 'Suspendu').length;
+  const totalProjects = filteredProjets.length;
+  const projectsTermines = filteredProjets.filter((p) => p.statut === 'Terminé').length;
+  const projectsClotures = filteredProjets.filter((p) => p.statut === 'Clôturé').length;
+  const projectsEnCours = filteredProjets.filter((p) => p.statut === 'En cours').length;
+  const projectsNonDemarres = filteredProjets.filter((p) => p.statut === 'En démarrage').length;
+  const projectsSuspendus = filteredProjets.filter((p) => p.statut === 'Suspendu').length;
   const tauxAchevement = safePct(projectsTermines + projectsClotures, totalProjects);
   const tauxProgressionGlobal = getWeightedProgression(taches);
 
@@ -387,8 +436,8 @@ export default function DashboardPage() {
   ];
 
   const riskByProject = useMemo(
-    () => projets.map((project) => ({ project, risk: getProjectRiskScores(project, nowTs) })),
-    [projets, nowTs]
+    () => filteredProjets.map((project) => ({ project, risk: getProjectRiskScores(project, nowTs) })),
+    [filteredProjets, nowTs]
   );
 
   const topRiskProjects = useMemo(
@@ -421,7 +470,7 @@ export default function DashboardPage() {
     const isAvancementFilter = AVANCEMENT_FILTERS.includes(filterChefProjet);
 
     const map = new Map<string, { name: string; count: number }>();
-    projets.forEach((p) => {
+    filteredProjets.forEach((p) => {
       if (!p.chefProjet?.id) return;
 
       if (filterChefProjet) {
@@ -448,7 +497,7 @@ export default function DashboardPage() {
       map.set(id, current);
     });
     return Array.from(map.values()).sort((a, b) => b.count - a.count).slice(0, 10);
-  }, [projets, projectAvancement, filterChefProjet]);
+  }, [filteredProjets, projectAvancement, filterChefProjet]);
 
   // Graphique 1: Distribution des projets par plage de progression
   const progressionByRange = useMemo(() => {
@@ -460,7 +509,7 @@ export default function DashboardPage() {
       { label: '81-99%', min: 81, max: 99, count: 0 },
       { label: '100%', min: 100, max: 100, count: 0 },
     ];
-    projets.forEach((p) => {
+    filteredProjets.forEach((p) => {
       const total = p.taches?.length ?? 0;
       const done = p.taches?.filter((t) => t.statut === 'Terminé' || t.statut === 'Validé').length ?? 0;
       const progress = total === 0 ? 100 : safePct(done, total);
@@ -468,7 +517,7 @@ export default function DashboardPage() {
       if (range) range.count += 1;
     });
     return ranges;
-  }, [projets]);
+  }, [filteredProjets]);
 
   // Graphique 2: Distribution des projets par statut (achèvement)
   const achievementData = useMemo(() => [
@@ -482,7 +531,7 @@ export default function DashboardPage() {
   // Graphique 3: Charge par chef de projet (barres empilées)
   const chargeChefProjet = useMemo(() => {
     const map = new Map<string, { name: string; 'En avance': number; 'À l\'heure': number; 'En retard': number; 'Hors délais': number }>();
-    projets.forEach((p) => {
+    filteredProjets.forEach((p) => {
       if (!p.chefProjet?.id) return;
       const id = p.chefProjet.id;
       const name = `${p.chefProjet.prenoms} ${p.chefProjet.nom}`;
@@ -498,7 +547,7 @@ export default function DashboardPage() {
       (b['En avance'] + b['À l\'heure'] + b['En retard'] + b['Hors délais']) -
       (a['En avance'] + a['À l\'heure'] + a['En retard'] + a['Hors délais'])
     ).slice(0, 10);
-  }, [projets, projectAvancement]);
+  }, [filteredProjets, projectAvancement]);
 
   // Graphique 4: Avancement vs Temps (progression réelle et attendue)
   const avancementVsTemps = useMemo(() => {
@@ -517,7 +566,7 @@ export default function DashboardPage() {
       snapshot.setDate(snapshot.getDate() - i * config.stepDays);
       const snapshotTs = snapshot.getTime();
 
-      const metrics = projets.map((p) => getProjectProgressMetrics(p, snapshotTs));
+      const metrics = filteredProjets.map((p) => getProjectProgressMetrics(p, snapshotTs));
       const reel = metrics.length ? Math.round(metrics.reduce((acc, m) => acc + m.real, 0) / metrics.length) : 0;
       const attendu = metrics.length ? Math.round(metrics.reduce((acc, m) => acc + m.expected, 0) / metrics.length) : 0;
 
@@ -529,7 +578,7 @@ export default function DashboardPage() {
     }
 
     return series;
-  }, [projets, periodeAvancement]);
+  }, [filteredProjets, periodeAvancement]);
 
   // ── KPIs tâches ──────────────────────────────────────────────────────────────
   const totalTachesFiltered   = filteredTaches.length;
@@ -685,55 +734,125 @@ export default function DashboardPage() {
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-slate-800">Filtres dashboard</h2>
-              <button
-                type="button"
-                onClick={() => setShowFilterPopup(false)}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-              >
+              <button type="button" onClick={() => setShowFilterPopup(false)}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
                 Fermer
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {/* Statut projet */}
               <div>
-                <label className="text-sm font-medium text-slate-700">Filtrer par projet</label>
-                <select
-                  value={filterProjet}
-                  onChange={(e) => setFilterProjet(e.target.value)}
-                  className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2"
-                >
-                  <option value="">Tous les projets</option>
-                  {projets.map((p) => (
-                    <option key={p.id} value={p.id}>{p.libelle}</option>
-                  ))}
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Statut projet</label>
+                <select value={filterStatutProjet} onChange={e => setFilterStatutProjet(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">Tous</option>
+                  {['En démarrage','En cours','Terminé','Clôturé','Suspendu'].map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
 
+              {/* État d'avancement projet */}
               <div>
-                <label className="text-sm font-medium text-slate-700">Filtrer par statut tache</label>
-                <select
-                  value={filterStatut}
-                  onChange={(e) => setFilterStatut(e.target.value)}
-                  className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2"
-                >
-                  <option value="">Tous les statuts</option>
-                  {STATUTS_TACHES.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">État d&apos;avancement</label>
+                <select value={filterEtatAvanProjet} onChange={e => setFilterEtatAvanProjet(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">Tous</option>
+                  <option value="en-avance">En avance</option>
+                  <option value="a-lheure">À l&apos;heure</option>
+                  <option value="retard">En retard</option>
+                  <option value="hors-delai">Hors délai</option>
+                </select>
+              </div>
+
+              {/* Risque projet */}
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Risque projet</label>
+                <select value={filterRisqueProjet} onChange={e => setFilterRisqueProjet(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">Tous</option>
+                  {['Faible','Moyen','Élevé','Critique'].map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+
+              {/* Chef de projet */}
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Chef de projet</label>
+                <select value={filterChefId} onChange={e => setFilterChefId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">Tous</option>
+                  {Array.from(new Map(projets.filter(p => p.chefProjet?.id).map(p => [p.chefProjet!.id, p.chefProjet!])).values())
+                    .sort((a, b) => `${a.prenoms} ${a.nom}`.localeCompare(`${b.prenoms} ${b.nom}`))
+                    .map(c => <option key={c.id} value={c.id}>{c.prenoms} {c.nom}</option>)}
+                </select>
+              </div>
+
+              {/* Liste projet */}
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Projet</label>
+                <select value={filterProjet} onChange={e => setFilterProjet(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">Tous</option>
+                  {projets.map(p => <option key={p.id} value={p.id}>{p.libelle}</option>)}
+                </select>
+              </div>
+
+              {/* Personne ressource */}
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Personne ressource</label>
+                <select value={filterPersonneId} onChange={e => setFilterPersonneId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">Toutes</option>
+                  {Array.from(new Map(taches.filter(t => t.assigneA?.id).map(t => [t.assigneA!.id, t.assigneA!])).values())
+                    .sort((a, b) => `${a.prenoms} ${a.nom}`.localeCompare(`${b.prenoms} ${b.nom}`))
+                    .map(p => <option key={p.id} value={p.id}>{p.prenoms} {p.nom}</option>)}
+                </select>
+              </div>
+
+              {/* Entité */}
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Entité</label>
+                <select value={filterEntiteId} onChange={e => setFilterEntiteId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">Toutes</option>
+                  {entites.map(e => <option key={e.id} value={e.id}>{e.libelle}</option>)}
+                </select>
+              </div>
+
+              {/* Statut tâche */}
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Statut tâche</label>
+                <select value={filterStatut} onChange={e => setFilterStatut(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">Tous</option>
+                  {STATUTS_TACHES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
             </div>
 
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
+            {/* Date range */}
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Début projet (à partir de)</label>
+                <input type="date" value={filterDateDebut} onChange={e => setFilterDateDebut(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Fin projet (jusqu&apos;au)</label>
+                <input type="date" value={filterDateFin} onChange={e => setFilterDateFin(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button type="button"
                 onClick={() => {
-                  setFilterProjet('');
-                  setFilterStatut('');
+                  setFilterProjet(''); setFilterStatut(''); setFilterStatutProjet('');
+                  setFilterEtatAvanProjet(''); setFilterRisqueProjet('');
+                  setFilterDateDebut(''); setFilterDateFin('');
+                  setFilterChefId(''); setFilterPersonneId(''); setFilterEntiteId('');
                 }}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-white transition hover:bg-slate-700"
-              >
-                Reinitialiser les filtres
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700">
+                Réinitialiser les filtres
               </button>
             </div>
           </section>
