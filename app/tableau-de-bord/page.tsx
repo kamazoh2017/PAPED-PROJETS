@@ -630,45 +630,31 @@ export default function DashboardPage() {
     }).filter(e => STATUTS_TACHES.some(s => ((e[s === 'A faire' ? 'À faire' : s] as number) ?? 0) > 0)),
   [filteredTaches]);
 
-  // ── Charge ressources — statuts ────────────────────────────────────────────────
-  const resourceChargeStatut = useMemo(() => {
+  // ── Charge ressources — priorité × (statut + avancement) ─────────────────────
+  const resourceGroupedData = useMemo(() => {
+    const AV_MAP: Record<string, string> = { 'en-avance': 'En avance', 'a-lheure': "À l'heure", 'retard': 'En retard', 'hors-delai': 'Hors délai' };
     const map = new Map<string, Record<string, string | number>>();
     filteredTaches.forEach(t => {
       if (!t.assigneA?.id) return;
       const id = t.assigneA.id;
       const name = `${t.assigneA.prenoms} ${t.assigneA.nom}`;
-      const entry = map.get(id) ?? { name, 'À planifier': 0, 'À faire': 0, 'En cours': 0, 'En attente': 0, 'Terminé': 0, 'Validé': 0 };
-      const s = t.statut === 'A faire' ? 'À faire' : (t.statut ?? 'À planifier');
-      entry[s] = ((entry[s] as number) || 0) + 1;
+      const entry = map.get(id) ?? {
+        name,
+        'Bloquant': 0, 'Critique': 0, 'Normal': 0,
+        'En avance': 0, "À l'heure": 0, 'En retard': 0, 'Hors délai': 0,
+      };
+      const prio = normalizePriority(t.priorite);
+      entry[prio] = ((entry[prio] as number) || 0) + 1;
+      const av = AV_MAP[t.etatAvancement ?? ''];
+      if (av) entry[av] = ((entry[av] as number) || 0) + 1;
       map.set(id, entry);
     });
     return Array.from(map.values())
       .sort((a, b) => {
-        const totA = ['À planifier','À faire','En cours','En attente','Terminé','Validé'].reduce((s,k) => s + ((a[k] as number)||0), 0);
-        const totB = ['À planifier','À faire','En cours','En attente','Terminé','Validé'].reduce((s,k) => s + ((b[k] as number)||0), 0);
-        return totB - totA;
-      }).slice(0, 8);
-  }, [filteredTaches]);
-
-  // ── Charge ressources — avancement ────────────────────────────────────────────
-  const resourceChargeAvancement = useMemo(() => {
-    const map = new Map<string, Record<string, string | number>>();
-    filteredTaches.forEach(t => {
-      if (!t.assigneA?.id) return;
-      const id = t.assigneA.id;
-      const name = `${t.assigneA.prenoms} ${t.assigneA.nom}`;
-      const entry = map.get(id) ?? { name, 'En avance': 0, 'À l\'heure': 0, 'En retard': 0, 'Hors délai': 0 };
-      const AV_MAP: Record<string,string> = { 'en-avance': 'En avance', 'a-lheure': "À l'heure", 'retard': 'En retard', 'hors-delai': 'Hors délai' };
-      const label = AV_MAP[t.etatAvancement ?? ''];
-      if (label) entry[label] = ((entry[label] as number) || 0) + 1;
-      map.set(id, entry);
-    });
-    return Array.from(map.values())
-      .sort((a, b) => {
-        const totA = ['En avance',"À l'heure",'En retard','Hors délai'].reduce((s,k) => s + ((a[k] as number)||0), 0);
-        const totB = ['En avance',"À l'heure",'En retard','Hors délai'].reduce((s,k) => s + ((b[k] as number)||0), 0);
-        return totB - totA;
-      }).slice(0, 8);
+        const tot = (e: Record<string, string | number>) =>
+          (['Bloquant','Critique','Normal'] as const).reduce((s, k) => s + ((e[k] as number) || 0), 0);
+        return tot(b) - tot(a);
+      }).slice(0, 10);
   }, [filteredTaches]);
 
   // ── Tâches en retard (détail) ─────────────────────────────────────────────────
@@ -1157,61 +1143,49 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* Graphiques — pleine largeur : charge par ressource */}
-      <section className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${dashboardView === 'projet' ? 'hidden' : ''}`}>
-        {/* Statuts par ressource */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="text-base font-semibold text-slate-800 mb-3">Statuts par ressource</h3>
-          {resourceChargeStatut.length === 0 ? (
-            <p className="text-sm text-slate-400">Aucune assignation.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={Math.max(200, resourceChargeStatut.length * 38)}>
-              <BarChart data={resourceChargeStatut} layout="vertical" margin={{ top: 4, right: 48, left: 4, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-                <YAxis dataKey="name" type="category" width={130} tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '11px' }} />
-                <Bar dataKey="À planifier" stackId="r" fill="#94a3b8" />
-                <Bar dataKey="À faire"     stackId="r" fill="#3b82f6" />
-                <Bar dataKey="En cours"    stackId="r" fill="#f59e0b" />
-                <Bar dataKey="En attente"  stackId="r" fill="#ef4444" />
-                <Bar dataKey="Terminé"     stackId="r" fill="#22c55e" />
-                <Bar dataKey="Validé"      stackId="r" fill="#10b981" radius={[0,4,4,0]}>
-                  <LabelList valueAccessor={(e: Record<string,number>) =>
-                    ['À planifier','À faire','En cours','En attente','Terminé','Validé'].reduce((s,k)=>s+(e[k]||0),0)}
-                    position="right" style={{ fontSize: 11, fontWeight: 600, fill: '#475569' }} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
+      {/* Charge par ressource — priorité × statut et priorité × avancement */}
+      <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${dashboardView === 'projet' ? 'hidden' : ''}`}>
+        <div className="mb-3 flex items-center gap-3 flex-wrap">
+          <h3 className="text-base font-semibold text-slate-800">Charge par ressource</h3>
+          <div className="flex items-center gap-4 text-xs text-slate-500">
+            <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-slate-400" />Priorité par statut</span>
+            <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-slate-300 border border-dashed border-slate-400" />Priorité par avancement</span>
+          </div>
         </div>
-
-        {/* Avancement par ressource */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="text-base font-semibold text-slate-800 mb-3">Avancement par ressource</h3>
-          {resourceChargeAvancement.length === 0 ? (
-            <p className="text-sm text-slate-400">Aucune assignation.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={Math.max(200, resourceChargeAvancement.length * 38)}>
-              <BarChart data={resourceChargeAvancement} layout="vertical" margin={{ top: 4, right: 48, left: 4, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-                <YAxis dataKey="name" type="category" width={130} tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '11px' }} />
-                <Bar dataKey="En avance"  stackId="r" fill="#22c55e" />
-                <Bar dataKey="À l'heure" stackId="r" fill="#3b82f6" />
-                <Bar dataKey="En retard"  stackId="r" fill="#f97316" />
-                <Bar dataKey="Hors délai" stackId="r" fill="#ef4444" radius={[0,4,4,0]}>
-                  <LabelList valueAccessor={(e: Record<string,number>) =>
-                    ['En avance',"À l'heure",'En retard','Hors délai'].reduce((s,k)=>s+(e[k]||0),0)}
-                    position="right" style={{ fontSize: 11, fontWeight: 600, fill: '#475569' }} />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+        {resourceGroupedData.length === 0 ? (
+          <p className="text-sm text-slate-400">Aucune assignation.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(260, resourceGroupedData.length * 52)}>
+            <BarChart data={resourceGroupedData} margin={{ top: 8, right: 16, left: 8, bottom: 40 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-25} textAnchor="end" />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '11px' }} />
+              {/* Barre 1 : priorité par statut */}
+              <Bar dataKey="Bloquant"  stackId="statut" fill="#ef4444" name="Bloquant (statut)" />
+              <Bar dataKey="Critique"  stackId="statut" fill="#f59e0b" name="Critique (statut)" />
+              <Bar dataKey="Normal"    stackId="statut" fill="#22c55e" name="Normal (statut)" radius={[4,4,0,0]}>
+                <LabelList
+                  valueAccessor={(e: Record<string, number>) => (e['Bloquant']||0) + (e['Critique']||0) + (e['Normal']||0)}
+                  position="top" style={{ fontSize: 11, fontWeight: 600, fill: '#ef4444' }}
+                  formatter={(v: number) => v > 0 ? v : ''}
+                />
+              </Bar>
+              {/* Barre 2 : priorité par avancement */}
+              <Bar dataKey="En avance"  stackId="avanc" fill="#86efac" name="En avance (avanc.)" />
+              <Bar dataKey="À l'heure" stackId="avanc" fill="#93c5fd" name="À l'heure (avanc.)" />
+              <Bar dataKey="En retard"  stackId="avanc" fill="#fdba74" name="En retard (avanc.)" />
+              <Bar dataKey="Hors délai" stackId="avanc" fill="#fca5a5" name="Hors délai (avanc.)" radius={[4,4,0,0]}>
+                <LabelList
+                  valueAccessor={(e: Record<string, number>) => (e['En avance']||0) + (e["À l'heure"]||0) + (e['En retard']||0) + (e['Hors délai']||0)}
+                  position="top" style={{ fontSize: 11, fontWeight: 600, fill: '#3b82f6' }}
+                  formatter={(v: number) => v > 0 ? v : ''}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </section>
 
       {/* Graphiques — ligne 2 */}
