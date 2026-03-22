@@ -17,6 +17,8 @@ interface Tache {
   dateFinEffective?: string;
   projet?: { libelle: string; id: string };
   assigneA?: { id: string; nom: string; prenoms: string };
+  etatAvancement?: string;
+  progression?: number;
 }
 
 interface Projet {
@@ -547,8 +549,12 @@ export default function DashboardPage() {
 
   // ── Pie statut tâches ────────────────────────────────────────────────────────
   const taskStatusPieData = STATUTS_TACHES
-    .map(s => ({ name: s === 'A faire' ? 'À faire' : s, value: filteredTaches.filter(t => t.statut === s).length, color: STATUT_TACHE_COLOR[s] ?? '#94a3b8' }))
-    .filter(d => d.value > 0);
+    .map(s => ({
+      name: s === 'A faire' ? 'À faire' : s,
+      value: filteredTaches.filter(t => t.statut === s || (s === 'A faire' && t.statut === 'À faire')).length,
+      color: STATUT_TACHE_COLOR[s] ?? '#94a3b8',
+    }))
+    .filter(d => d.value > 0 || d.name === 'À faire');
 
   // ── Pie priorité tâches ──────────────────────────────────────────────────────
   const taskPrioriteData = [
@@ -557,14 +563,20 @@ export default function DashboardPage() {
     { name: 'Normal',   value: filteredTaches.filter(t => normalizePriority(t.priorite) === 'Normal').length,   color: '#22c55e' },
   ].filter(d => d.value > 0);
 
-  // ── Avancement tâches par projet ─────────────────────────────────────────────
-  const avancementParProjet = useMemo(() =>
-    projets.map(p => {
-      const tp = filteredTaches.filter(t => (t.projetId ?? t.projet?.id) === p.id);
-      const done = tp.filter(t => isTaskDone(t.statut)).length;
-      return { name: p.libelle.length > 22 ? p.libelle.slice(0, 22) + '…' : p.libelle, done, restant: tp.length - done, total: tp.length };
-    }).filter(p => p.total > 0).sort((a, b) => b.total - a.total).slice(0, 8),
-  [projets, filteredTaches]);
+  // ── Tâches par état d'avancement ──────────────────────────────────────────────
+  const ETATS_AV = [
+    { key: 'en-avance',  label: 'En avance',  color: '#22c55e' },
+    { key: 'a-lheure',   label: 'À l\'heure', color: '#3b82f6' },
+    { key: 'retard',     label: 'En retard',  color: '#f97316' },
+    { key: 'hors-delai', label: 'Hors délai', color: '#ef4444' },
+  ];
+  const tachesParEtatAvancement = useMemo(() =>
+    ETATS_AV.map(e => ({
+      name: e.label,
+      value: filteredTaches.filter(t => (t.etatAvancement ?? '') === e.key).length,
+      color: e.color,
+    })).filter(d => d.value > 0),
+  [filteredTaches]);
 
   // ── Top assignés ─────────────────────────────────────────────────────────────
   const topAssignes = useMemo(() => {
@@ -581,6 +593,83 @@ export default function DashboardPage() {
     });
     return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 8);
   }, [filteredTaches, nowTs]);
+
+  // ── Statut par priorité ──────────────────────────────────────────────────────
+  const PRIO_LIST = ['Bloquant', 'Critique', 'Normal'];
+
+  const statutParPriorite = useMemo(() =>
+    PRIO_LIST.map(prio => {
+      const tasks = filteredTaches.filter(t => normalizePriority(t.priorite) === prio);
+      const entry: Record<string, string | number> = { name: prio };
+      STATUTS_TACHES.forEach(s => { entry[s === 'A faire' ? 'À faire' : s] = tasks.filter(t => t.statut === s || (s === 'A faire' && t.statut === 'À faire')).length; });
+      return entry;
+    }),
+  [filteredTaches]);
+
+  // ── Avancement par priorité ───────────────────────────────────────────────────
+  const avancementParPriorite = useMemo(() =>
+    PRIO_LIST.map(prio => {
+      const tasks = filteredTaches.filter(t => normalizePriority(t.priorite) === prio);
+      return {
+        name: prio,
+        'En avance':  tasks.filter(t => t.etatAvancement === 'en-avance').length,
+        'À l\'heure': tasks.filter(t => t.etatAvancement === 'a-lheure').length,
+        'En retard':  tasks.filter(t => t.etatAvancement === 'retard').length,
+        'Hors délai': tasks.filter(t => t.etatAvancement === 'hors-delai').length,
+      };
+    }),
+  [filteredTaches]);
+
+  // ── Statut par état d'avancement ──────────────────────────────────────────────
+  const statutParEtatAvancement = useMemo(() =>
+    ETATS_AV.map(e => {
+      const tasks = filteredTaches.filter(t => (t.etatAvancement ?? '') === e.key);
+      const entry: Record<string, string | number> = { name: e.label };
+      STATUTS_TACHES.forEach(s => { entry[s === 'A faire' ? 'À faire' : s] = tasks.filter(t => t.statut === s || (s === 'A faire' && t.statut === 'À faire')).length; });
+      return entry;
+    }).filter(e => STATUTS_TACHES.some(s => ((e[s === 'A faire' ? 'À faire' : s] as number) ?? 0) > 0)),
+  [filteredTaches]);
+
+  // ── Charge ressources — statuts ────────────────────────────────────────────────
+  const resourceChargeStatut = useMemo(() => {
+    const map = new Map<string, Record<string, string | number>>();
+    filteredTaches.forEach(t => {
+      if (!t.assigneA?.id) return;
+      const id = t.assigneA.id;
+      const name = `${t.assigneA.prenoms} ${t.assigneA.nom}`;
+      const entry = map.get(id) ?? { name, 'À planifier': 0, 'À faire': 0, 'En cours': 0, 'En attente': 0, 'Terminé': 0, 'Validé': 0 };
+      const s = t.statut === 'A faire' ? 'À faire' : (t.statut ?? 'À planifier');
+      entry[s] = ((entry[s] as number) || 0) + 1;
+      map.set(id, entry);
+    });
+    return Array.from(map.values())
+      .sort((a, b) => {
+        const totA = ['À planifier','À faire','En cours','En attente','Terminé','Validé'].reduce((s,k) => s + ((a[k] as number)||0), 0);
+        const totB = ['À planifier','À faire','En cours','En attente','Terminé','Validé'].reduce((s,k) => s + ((b[k] as number)||0), 0);
+        return totB - totA;
+      }).slice(0, 8);
+  }, [filteredTaches]);
+
+  // ── Charge ressources — avancement ────────────────────────────────────────────
+  const resourceChargeAvancement = useMemo(() => {
+    const map = new Map<string, Record<string, string | number>>();
+    filteredTaches.forEach(t => {
+      if (!t.assigneA?.id) return;
+      const id = t.assigneA.id;
+      const name = `${t.assigneA.prenoms} ${t.assigneA.nom}`;
+      const entry = map.get(id) ?? { name, 'En avance': 0, 'À l\'heure': 0, 'En retard': 0, 'Hors délai': 0 };
+      const AV_MAP: Record<string,string> = { 'en-avance': 'En avance', 'a-lheure': "À l'heure", 'retard': 'En retard', 'hors-delai': 'Hors délai' };
+      const label = AV_MAP[t.etatAvancement ?? ''];
+      if (label) entry[label] = ((entry[label] as number) || 0) + 1;
+      map.set(id, entry);
+    });
+    return Array.from(map.values())
+      .sort((a, b) => {
+        const totA = ['En avance',"À l'heure",'En retard','Hors délai'].reduce((s,k) => s + ((a[k] as number)||0), 0);
+        const totB = ['En avance',"À l'heure",'En retard','Hors délai'].reduce((s,k) => s + ((b[k] as number)||0), 0);
+        return totB - totA;
+      }).slice(0, 8);
+  }, [filteredTaches]);
 
   // ── Tâches en retard (détail) ─────────────────────────────────────────────────
   const tachesEnRetardDetails = useMemo(() =>
@@ -973,26 +1062,155 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
 
-        {/* Bar avancement par projet */}
+        {/* Tâches par état d'avancement */}
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="text-base font-semibold text-slate-800 mb-2">Avancement tâches par projet</h3>
+          <h3 className="text-base font-semibold text-slate-800 mb-2">Tâches par état d'avancement</h3>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={avancementParProjet} layout="vertical" margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
+            <BarChart data={tachesParEtatAvancement} margin={{ top: 16, right: 8, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-              <YAxis dataKey="name" type="category" width={110} tick={{ fontSize: 10 }} />
-              <Tooltip formatter={(v: number, name: string) => [v, name === 'done' ? 'Achevées' : 'Restantes']} />
-              <Legend wrapperStyle={{ fontSize: '12px' }} formatter={(v) => v === 'done' ? 'Achevées' : 'Restantes'} />
-              <Bar dataKey="done"    stackId="a" fill="#22c55e" name="done" />
-              <Bar dataKey="restant" stackId="a" fill="#e2e8f0" name="restant" radius={[0, 4, 4, 0]}>
-                <LabelList
-                  valueAccessor={(entry: { done: number; total: number }) => entry.total}
-                  position="right"
-                  style={{ fontSize: 11, fontWeight: 600, fill: '#475569' }}
-                />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis allowDecimals={false} />
+              <Tooltip formatter={(v: number) => [v, 'tâches']} />
+              <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                {tachesParEtatAvancement.map((e, i) => <Cell key={i} fill={e.color} />)}
+                <LabelList dataKey="value" position="top" style={{ fontSize: 12, fontWeight: 600, fill: '#475569' }}
+                  formatter={(v: number) => `${v} (${safePct(v, totalTachesFiltered)}%)`} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      </section>
+
+      {/* Graphiques — ligne 2 tâches : croisements */}
+      <section className={`grid grid-cols-1 gap-4 lg:grid-cols-3 ${dashboardView === 'projet' ? 'hidden' : ''}`}>
+        {/* Statut par priorité */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-800 mb-2">Statut par priorité</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={statutParPriorite} margin={{ top: 16, right: 8, left: 0, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '11px' }} />
+              <Bar dataKey="À planifier" stackId="a" fill="#94a3b8" />
+              <Bar dataKey="À faire"     stackId="a" fill="#3b82f6" />
+              <Bar dataKey="En cours"    stackId="a" fill="#f59e0b" />
+              <Bar dataKey="En attente"  stackId="a" fill="#ef4444" />
+              <Bar dataKey="Terminé"     stackId="a" fill="#22c55e" />
+              <Bar dataKey="Validé"      stackId="a" fill="#10b981" radius={[4,4,0,0]}>
+                <LabelList valueAccessor={(e: Record<string,number>) =>
+                  ['À planifier','À faire','En cours','En attente','Terminé','Validé'].reduce((s,k)=>s+(e[k]||0),0)}
+                  position="top" style={{ fontSize: 11, fontWeight: 600, fill: '#475569' }}
+                  formatter={(v:number) => v > 0 ? v : ''} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Avancement par priorité */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-800 mb-2">Avancement par priorité</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={avancementParPriorite} margin={{ top: 16, right: 8, left: 0, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '11px' }} />
+              <Bar dataKey="En avance"   stackId="a" fill="#22c55e" />
+              <Bar dataKey="À l'heure"  stackId="a" fill="#3b82f6" />
+              <Bar dataKey="En retard"   stackId="a" fill="#f97316" />
+              <Bar dataKey="Hors délai"  stackId="a" fill="#ef4444" radius={[4,4,0,0]}>
+                <LabelList valueAccessor={(e: Record<string,number>) =>
+                  ['En avance',"À l'heure",'En retard','Hors délai'].reduce((s,k)=>s+(e[k]||0),0)}
+                  position="top" style={{ fontSize: 11, fontWeight: 600, fill: '#475569' }}
+                  formatter={(v:number) => v > 0 ? v : ''} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Statut par état d'avancement */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-800 mb-2">Statut par avancement</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={statutParEtatAvancement} margin={{ top: 16, right: 8, left: 0, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '11px' }} />
+              <Bar dataKey="À planifier" stackId="a" fill="#94a3b8" />
+              <Bar dataKey="À faire"     stackId="a" fill="#3b82f6" />
+              <Bar dataKey="En cours"    stackId="a" fill="#f59e0b" />
+              <Bar dataKey="En attente"  stackId="a" fill="#ef4444" />
+              <Bar dataKey="Terminé"     stackId="a" fill="#22c55e" />
+              <Bar dataKey="Validé"      stackId="a" fill="#10b981" radius={[4,4,0,0]}>
+                <LabelList valueAccessor={(e: Record<string,number>) =>
+                  ['À planifier','À faire','En cours','En attente','Terminé','Validé'].reduce((s,k)=>s+(e[k]||0),0)}
+                  position="top" style={{ fontSize: 11, fontWeight: 600, fill: '#475569' }}
+                  formatter={(v:number) => v > 0 ? v : ''} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+
+      {/* Graphiques — pleine largeur : charge par ressource */}
+      <section className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${dashboardView === 'projet' ? 'hidden' : ''}`}>
+        {/* Statuts par ressource */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-800 mb-3">Statuts par ressource</h3>
+          {resourceChargeStatut.length === 0 ? (
+            <p className="text-sm text-slate-400">Aucune assignation.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(200, resourceChargeStatut.length * 38)}>
+              <BarChart data={resourceChargeStatut} layout="vertical" margin={{ top: 4, right: 48, left: 4, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                <YAxis dataKey="name" type="category" width={130} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '11px' }} />
+                <Bar dataKey="À planifier" stackId="r" fill="#94a3b8" />
+                <Bar dataKey="À faire"     stackId="r" fill="#3b82f6" />
+                <Bar dataKey="En cours"    stackId="r" fill="#f59e0b" />
+                <Bar dataKey="En attente"  stackId="r" fill="#ef4444" />
+                <Bar dataKey="Terminé"     stackId="r" fill="#22c55e" />
+                <Bar dataKey="Validé"      stackId="r" fill="#10b981" radius={[0,4,4,0]}>
+                  <LabelList valueAccessor={(e: Record<string,number>) =>
+                    ['À planifier','À faire','En cours','En attente','Terminé','Validé'].reduce((s,k)=>s+(e[k]||0),0)}
+                    position="right" style={{ fontSize: 11, fontWeight: 600, fill: '#475569' }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Avancement par ressource */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-base font-semibold text-slate-800 mb-3">Avancement par ressource</h3>
+          {resourceChargeAvancement.length === 0 ? (
+            <p className="text-sm text-slate-400">Aucune assignation.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(200, resourceChargeAvancement.length * 38)}>
+              <BarChart data={resourceChargeAvancement} layout="vertical" margin={{ top: 4, right: 48, left: 4, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                <YAxis dataKey="name" type="category" width={130} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: '11px' }} />
+                <Bar dataKey="En avance"  stackId="r" fill="#22c55e" />
+                <Bar dataKey="À l'heure" stackId="r" fill="#3b82f6" />
+                <Bar dataKey="En retard"  stackId="r" fill="#f97316" />
+                <Bar dataKey="Hors délai" stackId="r" fill="#ef4444" radius={[0,4,4,0]}>
+                  <LabelList valueAccessor={(e: Record<string,number>) =>
+                    ['En avance',"À l'heure",'En retard','Hors délai'].reduce((s,k)=>s+(e[k]||0),0)}
+                    position="right" style={{ fontSize: 11, fontWeight: 600, fill: '#475569' }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </section>
 
