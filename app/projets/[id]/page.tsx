@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Users, Building2, CheckCircle2, Plus, X, MessageSquare, CornerDownRight, Send, Trash2 } from 'lucide-react';
+import { Users, Building2, CheckCircle2, Plus, X, MessageSquare, CornerDownRight, Send, Trash2, ShieldCheck, AlertCircle, AlertTriangle, ShieldAlert, ChevronDown, Search, Pencil, Check } from 'lucide-react';
 import ProjectGantt from '@/components/ProjectGantt';
 
 interface Entite {
@@ -73,11 +73,23 @@ interface PartiePrenanteProjets {
   partiePrenante: PartiePrenante;
 }
 
+interface RisqueProjet {
+  libelle: string;
+  taux: number;
+  gravite: string;
+  couleur: string;
+}
+
 interface Projet {
   id: string;
   libelle: string;
   description?: string;
   statut: string;
+  etatAvancement?: string;
+  tauxAvancementReel?: number;
+  tauxAvancementAttendu?: number;
+  tauxAchevementReel?: number;
+  tauxAchevementAttendu?: number;
   dateDebutPrevisionnelle?: string;
   dateFinPrevisionnelle?: string;
   dateDebutEffective?: string;
@@ -86,6 +98,7 @@ interface Projet {
   equipeProjet: Personne[];
   taches: Tache[];
   partiesPrenantes: PartiePrenanteProjets[];
+  risques?: RisqueProjet[];
 }
 
 const PRIORITE_COLORS: Record<string, string> = {
@@ -167,15 +180,23 @@ const ACTIVITE_COLORS: Record<string, string> = {
 };
 
 const AVANCEMENT_BORDER_LEFT: Record<string, string> = {
-  retard: 'border-l-red-500',
-  'en-avance': 'border-l-green-500',
-  'hors-delai': 'border-l-orange-500',
+  retard:       'border-l-orange-500',
+  'en-avance':  'border-l-green-500',
+  'hors-delai': 'border-l-red-500',
 };
 
 const AVANCEMENT_BADGE: Record<string, { label: string; classes: string }> = {
-  retard:       { label: 'En retard',  classes: 'bg-red-100 text-red-700' },
+  'a-lheure':   { label: 'À l\'heure', classes: 'bg-blue-100 text-blue-700' },
+  retard:       { label: 'En retard',  classes: 'bg-orange-100 text-orange-700' },
   'en-avance':  { label: 'En avance',  classes: 'bg-green-100 text-green-700' },
-  'hors-delai': { label: 'Hors délai', classes: 'bg-orange-100 text-orange-700' },
+  'hors-delai': { label: 'Hors délai', classes: 'bg-red-100 text-red-700' },
+};
+
+const RISQUE_CONFIG: Record<string, { label: string; classes: string; Icon: React.ElementType }> = {
+  Faible:   { label: 'Faible',   classes: 'bg-green-100 text-green-700',  Icon: ShieldCheck    },
+  Moyen:    { label: 'Moyen',    classes: 'bg-yellow-100 text-yellow-700', Icon: AlertCircle   },
+  'Élevé':  { label: 'Élevé',   classes: 'bg-orange-100 text-orange-700', Icon: AlertTriangle },
+  Critique: { label: 'Critique', classes: 'bg-red-100 text-red-700',       Icon: ShieldAlert   },
 };
 
 function getAvanancementProjet(projet: Projet): 'retard' | 'en-avance' | 'hors-delai' | null {
@@ -211,10 +232,21 @@ const STATUT_COLORS: Record<string, string> = {
   'À planifier': 'bg-slate-100 text-slate-600',
   'A faire':     'bg-blue-100 text-blue-700',
   'En cours':    'bg-amber-100 text-amber-700',
-  'En attente':  'bg-purple-100 text-purple-700',
+  'En attente':  'bg-red-100 text-red-700',
   'Terminé':     'bg-green-100 text-green-700',
   'Validé':      'bg-emerald-100 text-emerald-700',
 };
+
+function getProjetStatutStyle(statut: string): React.CSSProperties {
+  switch (statut) {
+    case 'En démarrage': return { backgroundColor: '#dbeafe', color: '#1d4ed8' };
+    case 'En cours':     return { backgroundColor: '#ffedd5', color: '#c2410c' };
+    case 'Terminé':      return { backgroundColor: '#dcfce7', color: '#15803d' };
+    case 'Clôturé':      return { backgroundColor: '#065f46', color: '#ffffff' };
+    case 'Suspendu':     return { backgroundColor: '#fee2e2', color: '#b91c1c' };
+    default:             return { backgroundColor: '#dbeafe', color: '#1d4ed8' };
+  }
+}
 
 const STATUTS_EXECUTION = ['À planifier', 'A faire', 'En cours', 'En attente', 'Terminé', 'Validé'] as const;
 
@@ -228,6 +260,25 @@ const KANBAN_CONFIG: Record<string, { label: string; borderColor: string; header
   'En attente': { label: 'En attente', borderColor: 'border-t-red-400',   headerClass: 'bg-red-50 text-red-700' },
 };
 
+function getAllowedNextStatuts(task: Tache): string[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const debutPrev = task.dateDebutPrevisionnelle ? task.dateDebutPrevisionnelle.slice(0, 10) : null;
+  const hasStarted = !!task.dateDebutEffective;
+
+  return ([...STATUTS_EXECUTION] as string[]).filter(s => {
+    if (s === task.statut) return true;
+    // Retour en arrière bloqué si déjà démarrée
+    if (s === 'À planifier') return !hasStarted;
+    if (s === 'A faire') {
+      if (!hasStarted) return true;
+      return debutPrev !== null && today < debutPrev;
+    }
+    // "En attente" = bloqué/en pause : accessible depuis tout statut non terminal
+    if (s === 'En attente') return task.statut !== 'Terminé' && task.statut !== 'Validé';
+    return true;
+  });
+}
+
 type TabKey = 'infos' | 'liste-taches' | 'execution' | 'gantt' | 'detail';
 
 const STATUTS_PROJET = [
@@ -237,6 +288,165 @@ const STATUTS_PROJET = [
   'Clôturé',
   'Suspendu',
 ];
+
+// ─── Composant MultiSelect ────────────────────────────────────────────────────
+
+interface MultiSelectProps {
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+}
+
+function MultiSelect({ label, options, selected, onChange }: MultiSelectProps) {
+  const [open, setOpen]   = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const filtered = options.filter(o => o.toLowerCase().includes(search.toLowerCase()));
+
+  function toggle(v: string) {
+    onChange(selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v]);
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border whitespace-nowrap transition-colors ${
+          selected.length > 0
+            ? 'border-primary bg-primary/10 text-primary font-semibold'
+            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+        }`}
+      >
+        <span className="text-slate-400 mr-0.5">{label}:</span>
+        {selected.length === 0 ? 'Tout' : `${selected.length} sél.`}
+        <ChevronDown size={11} />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 z-30 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg min-w-[190px] p-2 space-y-1.5">
+          <div className="relative">
+            <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              autoFocus
+              type="text"
+              placeholder="Rechercher…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-6 pr-2 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/30"
+            />
+          </div>
+          <div className="max-h-44 overflow-y-auto space-y-0.5">
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className={`w-full text-left px-2 py-1 text-xs rounded hover:bg-slate-50 ${selected.length === 0 ? 'font-semibold text-primary' : 'text-slate-600'}`}
+            >
+              Tout
+            </button>
+            {filtered.map(o => (
+              <label key={o} className="flex items-center gap-2 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 rounded cursor-pointer">
+                <input type="checkbox" checked={selected.includes(o)} onChange={() => toggle(o)} className="rounded accent-primary" />
+                {o}
+              </label>
+            ))}
+          </div>
+          <div className="border-t border-slate-100 pt-1">
+            <button
+              type="button"
+              onClick={() => { onChange([]); setSearch(''); }}
+              className="w-full text-xs text-slate-400 hover:text-slate-600 py-0.5 text-center"
+            >
+              Réinitialiser
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Composant TaskSearchSelect ───────────────────────────────────────────────
+
+interface TaskSearchSelectProps {
+  taches: Tache[];
+  selectedId: string | null;
+  onSelect: (t: Tache) => void;
+}
+
+function TaskSearchSelect({ taches, selectedId, onSelect }: TaskSearchSelectProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const selected = selectedId ? taches.find(t => t.id === selectedId) : null;
+  const filtered = taches.filter(t => t.libelle.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border whitespace-nowrap transition-colors border-slate-200 bg-white text-slate-600 hover:border-slate-300 max-w-[220px]"
+      >
+        <span className="truncate">{selected ? selected.libelle : `— Tâche (${taches.length}) —`}</span>
+        <ChevronDown size={11} className="flex-shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute top-full right-0 z-30 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg w-72 p-2 space-y-1.5">
+          <div className="relative">
+            <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              autoFocus
+              type="text"
+              placeholder="Rechercher une tâche…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-6 pr-2 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/30"
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto space-y-0.5">
+            {filtered.length === 0 ? (
+              <p className="text-xs text-slate-400 px-2 py-1">Aucune tâche trouvée.</p>
+            ) : filtered.map(t => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => { onSelect(t); setOpen(false); setSearch(''); }}
+                className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                  t.id === selectedId ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-slate-50 text-slate-700'
+                }`}
+              >
+                {t.libelle}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function ProjetDetailPage() {
   const params = useParams();
@@ -267,6 +477,8 @@ export default function ProjetDetailPage() {
   const [taskFormError, setTaskFormError] = useState('');
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dropTargetCol, setDropTargetCol] = useState<string | null>(null);
+  const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
+  const [pendingMoveCol, setPendingMoveCol] = useState<string | null>(null);
   const [taskForm, setTaskForm] = useState({
     libelle: '',
     description: '',
@@ -287,8 +499,32 @@ export default function ProjetDetailPage() {
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentaires, setCommentaires] = useState<Commentaire[]>([]);
   const [commentairesLoading, setCommentairesLoading] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editCommentText, setEditCommentText] = useState('');
+  const [editCommentSaving, setEditCommentSaving] = useState(false);
+  const [deleteCommentId, setDeleteCommentId] = useState<string | null>(null);
+  const [deleteCommentLoading, setDeleteCommentLoading] = useState(false);
   const [activites, setActivites] = useState<Activite[]>([]);
   const [activitesLoading, setActivitesLoading] = useState(false);
+  // Task delete
+  const [deleteTaskConfirm, setDeleteTaskConfirm] = useState(false);
+  const [deleteTaskLoading, setDeleteTaskLoading] = useState(false);
+  const [deleteTaskError, setDeleteTaskError] = useState('');
+
+  // ── Filtres liste des tâches ─────────────────────────────────────────────
+  const [flTache,      setFlTache]      = useState('');
+  const [flAssigne,    setFlAssigne]    = useState<string[]>([]);
+  const [flPriorite,   setFlPriorite]   = useState<string[]>([]);
+  const [flStatut,     setFlStatut]     = useState<string[]>([]);
+  const [flAvancement, setFlAvancement] = useState<string[]>([]);
+  const [flPeriodeDebut, setFlPeriodeDebut] = useState('');
+  const [flPeriodeFin,   setFlPeriodeFin]   = useState('');
+
+  // ── Filtres détail tâche ──────────────────────────────────────────────────
+  const [dtAssigne,    setDtAssigne]    = useState<string[]>([]);
+  const [dtPriorite,   setDtPriorite]   = useState<string[]>([]);
+  const [dtStatut,     setDtStatut]     = useState<string[]>([]);
+  const [dtAvancement, setDtAvancement] = useState<string[]>([]);
 
   useEffect(() => {
     if (projectId) fetchProjet();
@@ -420,8 +656,7 @@ export default function ProjetDetailPage() {
           assigneAId: detailEdit.assigneAId || null,
           dateDebutPrevisionnelle: detailEdit.dateDebutPrevisionnelle || null,
           dateFinPrevisionnelle: detailEdit.dateFinPrevisionnelle || null,
-          dateDebutEffective: detailEdit.dateDebutEffective || null,
-          dateFinEffective: detailEdit.dateFinEffective || null,
+          // dateDebutEffective et dateFinEffective gérées automatiquement par le serveur
         }),
       });
       if (!res.ok) {
@@ -456,7 +691,58 @@ export default function ProjetDetailPage() {
     }
   };
 
+  const handleDeleteTask = async () => {
+    if (!selectedTaskId) return;
+    setDeleteTaskLoading(true);
+    setDeleteTaskError('');
+    try {
+      const res = await fetch(`/api/taches/${selectedTaskId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) { setDeleteTaskError(data?.error || 'Erreur lors de la suppression.'); return; }
+      setDeleteTaskConfirm(false);
+      setSelectedTaskId(null);
+      setDetailEdit({});
+      await fetchProjet();
+    } catch { setDeleteTaskError('Erreur réseau.'); }
+    finally { setDeleteTaskLoading(false); }
+  };
+
+  const handleEditComment = async (commentaireId: string) => {
+    if (!selectedTaskId || !editCommentText.trim()) return;
+    setEditCommentSaving(true);
+    try {
+      const res = await fetch(`/api/taches/${selectedTaskId}/commentaires/${commentaireId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contenu: editCommentText.trim() }),
+      });
+      if (res.ok) {
+        setEditingCommentId(null);
+        setEditCommentText('');
+        await fetchCommentaires(selectedTaskId);
+      }
+    } catch { /* silently ignore */ }
+    finally { setEditCommentSaving(false); }
+  };
+
+  const handleDeleteComment = async (commentaireId: string) => {
+    if (!selectedTaskId) return;
+    setDeleteCommentLoading(true);
+    try {
+      const res = await fetch(`/api/taches/${selectedTaskId}/commentaires/${commentaireId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDeleteCommentId(null);
+        await fetchCommentaires(selectedTaskId);
+      }
+    } catch { /* silently ignore */ }
+    finally { setDeleteCommentLoading(false); }
+  };
+
   const moveTask = async (taskId: string, newStatut: string) => {
+    const task = projet?.taches.find(t => t.id === taskId);
+    if (task && !getAllowedNextStatuts(task).includes(newStatut)) return;
+    setMovingTaskId(taskId);
+    setPendingMoveCol(newStatut);
     try {
       await fetch(`/api/taches/${taskId}`, {
         method: 'PUT',
@@ -466,6 +752,9 @@ export default function ProjetDetailPage() {
       await fetchProjet();
     } catch (error) {
       console.error('Erreur:', error);
+    } finally {
+      setMovingTaskId(null);
+      setPendingMoveCol(null);
     }
   };
 
@@ -474,20 +763,27 @@ export default function ProjetDetailPage() {
 
   const taches = projet.taches ?? [];
   const totalTaches = taches.length;
-  const previsionnel = totalTaches === 0 ? 0
-    : Math.round(taches.filter(t => t.statut !== 'À planifier').length / totalTaches * 100);
-  const effectif = totalTaches === 0 ? 0
-    : Math.round(taches.filter(t => t.statut === 'Terminé' || t.statut === 'Validé').length / totalTaches * 100);
 
-  const avancementProjet = getAvanancementProjet(projet);
-  const avBadge = avancementProjet ? AVANCEMENT_BADGE[avancementProjet] : null;
+  const tauxAvancReel    = Math.round(projet.tauxAvancementReel    ?? 0);
+  const tauxAvancAttendu = Math.round(projet.tauxAvancementAttendu ?? 0);
+  const tauxAchevReel    = Math.round(projet.tauxAchevementReel    ?? 0);
+  const tauxAchevAttendu = Math.round(projet.tauxAchevementAttendu ?? 0);
+
+  const etatAv  = projet.etatAvancement ?? getAvanancementProjet(projet) ?? null;
+  const avBadge = etatAv ? (AVANCEMENT_BADGE[etatAv] ?? null) : null;
+
+  const risqueGlobal = projet.risques?.find(r => r.libelle === 'global') ?? null;
+  const risqueConfig = risqueGlobal ? (RISQUE_CONFIG[risqueGlobal.gravite] ?? null) : null;
 
   const entiteMap = new Map<string, Entite>();
   projet.equipeProjet.forEach(m => { if (m.entite?.id) entiteMap.set(m.entite.id, m.entite); });
   const entites = Array.from(entiteMap.values());
 
   const tasksByMember = (memberId: string) => taches.filter(t => t.assigneA?.id === memberId);
-  const tasksByColumn = (col: string) => taches.filter(t => t.statut === col);
+  const tasksByColumn = (col: string) => taches.filter(t => {
+    if (movingTaskId === t.id) return col === pendingMoveCol;
+    return t.statut === col;
+  });
 
   const selectedTask = selectedTaskId ? taches.find(t => t.id === selectedTaskId) ?? null : null;
   const selectedAvancement = selectedTask ? getAvancement(selectedTask) : null;
@@ -507,13 +803,14 @@ export default function ProjetDetailPage() {
       {/* ── HEADER ── */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          {/* Infos projet */}
+          <div className="min-w-0 flex-1">
             <h1 className="text-3xl font-bold text-primary">{projet.libelle}</h1>
             {projet.description && (
               <p className="mt-1 text-slate-500 text-sm">{projet.description}</p>
             )}
-            <div className="flex flex-wrap gap-3 mt-3">
-              <span className="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-semibold">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3">
+              <span className="px-3 py-1 rounded-full text-sm font-semibold" style={getProjetStatutStyle(projet.statut)}>
                 {projet.statut}
               </span>
               {avBadge && (
@@ -529,58 +826,77 @@ export default function ProjetDetailPage() {
                 <CheckCircle2 size={14} />
                 {totalTaches} tâche{totalTaches !== 1 ? 's' : ''}
               </span>
+              {/* Dates — même ligne, séparées par un tiret */}
+              {(projet.dateDebutPrevisionnelle || projet.dateFinPrevisionnelle || projet.dateDebutEffective || projet.dateFinEffective) && (
+                <>
+                  <span className="text-slate-300 select-none">|</span>
+                  {projet.dateDebutPrevisionnelle && (
+                    <span className="text-xs text-slate-400">Début prév. {fmtDate(projet.dateDebutPrevisionnelle)}</span>
+                  )}
+                  {projet.dateFinPrevisionnelle && (
+                    <span className="text-xs text-slate-400">Fin prév. {fmtDate(projet.dateFinPrevisionnelle)}</span>
+                  )}
+                  {projet.dateDebutEffective && (
+                    <span className="text-xs text-emerald-600 font-medium">Début eff. {fmtDate(projet.dateDebutEffective)}</span>
+                  )}
+                  {projet.dateFinEffective && (
+                    <span className="text-xs text-emerald-600 font-medium">Fin eff. {fmtDate(projet.dateFinEffective)}</span>
+                  )}
+                </>
+              )}
             </div>
-            {(projet.dateDebutPrevisionnelle || projet.dateFinPrevisionnelle || projet.dateDebutEffective || projet.dateFinEffective) && (
-              <div className="flex flex-wrap gap-3 mt-2">
-                {projet.dateDebutPrevisionnelle && (
-                  <span className="text-xs text-slate-400">
-                    Début prév. {fmtDate(projet.dateDebutPrevisionnelle)}
-                  </span>
-                )}
-                {projet.dateFinPrevisionnelle && (
-                  <span className="text-xs text-slate-400">
-                    Fin prév. {fmtDate(projet.dateFinPrevisionnelle)}
-                  </span>
-                )}
-                {projet.dateDebutEffective && (
-                  <span className="text-xs text-emerald-600 font-medium">
-                    Début eff. {fmtDate(projet.dateDebutEffective)}
-                  </span>
-                )}
-                {projet.dateFinEffective && (
-                  <span className="text-xs text-emerald-600 font-medium">
-                    Fin eff. {fmtDate(projet.dateFinEffective)}
-                  </span>
-                )}
-              </div>
-            )}
           </div>
+
+          {/* Risque global — extrême droite */}
+          {risqueGlobal && risqueConfig && (
+            <div className={`flex-shrink-0 flex flex-col items-center gap-1 px-4 py-3 rounded-xl ${risqueConfig.classes} bg-opacity-80`}>
+              <risqueConfig.Icon size={22} />
+              <span className="text-lg font-bold leading-none">{risqueGlobal.taux}%</span>
+              <span className="text-xs font-medium leading-none">Risque {risqueConfig.label}</span>
+            </div>
+          )}
         </div>
 
-        {/* Progression bars */}
-        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-5">
+        {/* Métriques — 4 barres sur une ligne */}
+        <div className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+          {/* Progression attendue */}
           <div>
             <div className="flex justify-between text-xs text-slate-500 mb-1.5">
-              <span>Progression prévisionnelle</span>
-              <span className="font-bold text-primary">{previsionnel}%</span>
+              <span>Progression attendue</span>
+              <span className="font-bold text-blue-600">{tauxAvancAttendu}%</span>
             </div>
             <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary rounded-full transition-all duration-500"
-                style={{ width: `${previsionnel}%` }}
-              />
+              <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${tauxAvancAttendu}%` }} />
             </div>
           </div>
+          {/* Progression réelle */}
           <div>
             <div className="flex justify-between text-xs text-slate-500 mb-1.5">
-              <span>Progression effective</span>
-              <span className="font-bold text-secondary">{effectif}%</span>
+              <span>Progression réelle</span>
+              <span className="font-bold text-emerald-600">{tauxAvancReel}%</span>
             </div>
             <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-secondary rounded-full transition-all duration-500"
-                style={{ width: `${effectif}%` }}
-              />
+              <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${tauxAvancReel}%` }} />
+            </div>
+          </div>
+          {/* Réalisation attendue */}
+          <div>
+            <div className="flex justify-between text-xs text-slate-500 mb-1.5">
+              <span>Réalisation attendue</span>
+              <span className="font-bold text-indigo-600">{tauxAchevAttendu}%</span>
+            </div>
+            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-indigo-500 rounded-full transition-all duration-500" style={{ width: `${tauxAchevAttendu}%` }} />
+            </div>
+          </div>
+          {/* Réalisation réelle */}
+          <div>
+            <div className="flex justify-between text-xs text-slate-500 mb-1.5">
+              <span>Réalisation réelle</span>
+              <span className="font-bold text-violet-600">{tauxAchevReel}%</span>
+            </div>
+            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-violet-500 rounded-full transition-all duration-500" style={{ width: `${tauxAchevReel}%` }} />
             </div>
           </div>
         </div>
@@ -667,8 +983,9 @@ export default function ProjetDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Statut</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Statut <span className="text-red-500">*</span></label>
                 <select
+                  required
                   value={detailEdit.statut ?? projet.statut}
                   onChange={e => setDetailEdit((d: any) => ({ ...d, statut: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
@@ -679,8 +996,9 @@ export default function ProjetDetailPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Chef de projet</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Chef de projet <span className="text-red-500">*</span></label>
                 <select
+                  required
                   value={detailEdit.chefProjetId ?? projet.chefProjet?.id ?? ''}
                   onChange={e => setDetailEdit((d: any) => ({ ...d, chefProjetId: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
@@ -695,36 +1013,36 @@ export default function ProjetDetailPage() {
                 <label className="block text-xs font-medium text-slate-600 mb-1">Début prévisionnel</label>
                 <input
                   type="date"
-                  value={detailEdit.dateDebutPrevisionnelle ?? toInputDate(projet.dateDebutPrevisionnelle)}
-                  onChange={e => setDetailEdit((d: any) => ({ ...d, dateDebutPrevisionnelle: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  readOnly
+                  value={toInputDate(projet.dateDebutPrevisionnelle)}
+                  className="w-full px-3 py-2 border border-slate-100 rounded-lg text-sm bg-slate-50 text-slate-400 cursor-not-allowed"
                 />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Fin prévisionnelle</label>
                 <input
                   type="date"
-                  value={detailEdit.dateFinPrevisionnelle ?? toInputDate(projet.dateFinPrevisionnelle)}
-                  onChange={e => setDetailEdit((d: any) => ({ ...d, dateFinPrevisionnelle: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  readOnly
+                  value={toInputDate(projet.dateFinPrevisionnelle)}
+                  className="w-full px-3 py-2 border border-slate-100 rounded-lg text-sm bg-slate-50 text-slate-400 cursor-not-allowed"
                 />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Début effectif</label>
                 <input
                   type="date"
-                  value={detailEdit.dateDebutEffective ?? toInputDate(projet.dateDebutEffective)}
-                  onChange={e => setDetailEdit((d: any) => ({ ...d, dateDebutEffective: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  readOnly
+                  value={toInputDate(projet.dateDebutEffective)}
+                  className="w-full px-3 py-2 border border-slate-100 rounded-lg text-sm bg-slate-50 text-slate-400 cursor-not-allowed"
                 />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Fin effective</label>
                 <input
                   type="date"
-                  value={detailEdit.dateFinEffective ?? toInputDate(projet.dateFinEffective)}
-                  onChange={e => setDetailEdit((d: any) => ({ ...d, dateFinEffective: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  readOnly
+                  value={toInputDate(projet.dateFinEffective)}
+                  className="w-full px-3 py-2 border border-slate-100 rounded-lg text-sm bg-slate-50 text-slate-400 cursor-not-allowed"
                 />
               </div>
               <div className="md:col-span-2">
@@ -1117,86 +1435,173 @@ export default function ProjetDetailPage() {
             </form>
           )}
 
+          {/* ── Barre de filtres ── */}
+          {taches.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Recherche tâche */}
+                <div className="relative">
+                  <Search size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Rechercher une tâche…"
+                    value={flTache}
+                    onChange={e => setFlTache(e.target.value)}
+                    className="pl-6 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/30 w-44"
+                  />
+                </div>
+                {/* Assigné à */}
+                <MultiSelect
+                  label="Assigné à"
+                  options={[...new Set(taches.map(t => t.assigneA ? `${t.assigneA.prenoms} ${t.assigneA.nom}` : '—'))]}
+                  selected={flAssigne}
+                  onChange={setFlAssigne}
+                />
+                {/* Priorité */}
+                <MultiSelect
+                  label="Priorité"
+                  options={['Bloquant', 'Critique', 'Normal']}
+                  selected={flPriorite}
+                  onChange={setFlPriorite}
+                />
+                {/* Statut */}
+                <MultiSelect
+                  label="Statut"
+                  options={['À planifier', 'A faire', 'En cours', 'En attente', 'Terminé', 'Validé']}
+                  selected={flStatut}
+                  onChange={setFlStatut}
+                />
+                {/* Avancement */}
+                <MultiSelect
+                  label="Avancement"
+                  options={["En avance", "À l'heure", "En retard", "Hors délai"]}
+                  selected={flAvancement}
+                  onChange={setFlAvancement}
+                />
+                {/* Période */}
+                <span className="text-xs text-slate-400">Période :</span>
+                <input
+                  type="date"
+                  value={flPeriodeDebut}
+                  onChange={e => setFlPeriodeDebut(e.target.value)}
+                  className="px-2 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/30"
+                />
+                <span className="text-xs text-slate-400">→</span>
+                <input
+                  type="date"
+                  value={flPeriodeFin}
+                  min={flPeriodeDebut || undefined}
+                  onChange={e => setFlPeriodeFin(e.target.value)}
+                  className="px-2 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/30"
+                />
+                {/* Reset global */}
+                {(flTache || flAssigne.length || flPriorite.length || flStatut.length || flAvancement.length || flPeriodeDebut || flPeriodeFin) && (
+                  <button
+                    type="button"
+                    onClick={() => { setFlTache(''); setFlAssigne([]); setFlPriorite([]); setFlStatut([]); setFlAvancement([]); setFlPeriodeDebut(''); setFlPeriodeFin(''); }}
+                    className="text-xs text-slate-400 hover:text-red-500 underline ml-1"
+                  >
+                    Tout réinitialiser
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Tableau des tâches */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            {taches.length === 0 ? (
-              <div className="py-14 text-center text-slate-400 text-sm">
-                Aucune tâche créée. Cliquez sur &quot;Nouvelle tâche&quot; pour commencer.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase tracking-wide">
-                      <th className="text-left py-3 px-4 font-semibold">Tâche</th>
-                      <th className="text-left py-3 px-4 font-semibold">Assignée à</th>
-                      <th className="text-left py-3 px-4 font-semibold">Priorité</th>
-                      <th className="text-left py-3 px-4 font-semibold">Statut d&apos;exécution</th>
-                      <th className="text-left py-3 px-4 font-semibold">Avancement</th>
-                      <th className="text-left py-3 px-4 font-semibold">Dates prév.</th>
-                      <th className="text-left py-3 px-4 font-semibold">Dates effect.</th>
-                      <th className="py-3 px-4 font-semibold text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {taches.map(t => {
-                      const av = getAvancement(t);
-                      const avBadgeTask = t.statut !== 'À planifier' ? AVANCEMENT_BADGE[av] : null;
-                      const statutLabel = t.statut;
-                      return (
-                        <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="py-3 px-4">
-                            <p className="font-medium text-slate-800">{t.libelle}</p>
-                          </td>
-                          <td className="py-3 px-4 text-slate-600 text-xs">
-                            {t.assigneA
-                              ? `${t.assigneA.prenoms} ${t.assigneA.nom}`
-                              : <span className="text-slate-300">—</span>}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`text-xs px-2 py-0.5 rounded-full border ${PRIORITE_COLORS[normalizePriority(t.priorite)] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                              {normalizePriority(t.priorite)}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${STATUT_COLORS[t.statut] ?? 'bg-gray-100 text-gray-600'}`}>
-                              {statutLabel}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            {avBadgeTask ? (
-                              <span className={`text-xs px-2 py-0.5 rounded-full ${avBadgeTask.classes}`}>
-                                {avBadgeTask.label}
-                              </span>
-                            ) : (
-                              <span className="text-slate-300 text-xs">—</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 text-slate-500 text-xs whitespace-nowrap">
-                            <div>{fmtDate(t.dateDebutPrevisionnelle)}</div>
-                            <div className="text-slate-400">{fmtDate(t.dateFinPrevisionnelle)}</div>
-                          </td>
-                          <td className="py-3 px-4 text-slate-500 text-xs whitespace-nowrap">
-                            <div>{fmtDate(t.dateDebutEffective)}</div>
-                            <div className="text-slate-400">{fmtDate(t.dateFinEffective)}</div>
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <button
-                              title="Voir le détail de la tâche"
-                              onClick={() => openDetail(t)}
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-secondary/10 hover:bg-secondary/20 text-secondary transition-colors"
-                            >
-                              <Plus size={14} />
-                            </button>
-                          </td>
+          {(() => {
+            const tachesFiltrees = taches.filter(t => {
+              if (flTache && !t.libelle.toLowerCase().includes(flTache.toLowerCase())) return false;
+              const nomAssigne = t.assigneA ? `${t.assigneA.prenoms} ${t.assigneA.nom}` : '—';
+              if (flAssigne.length && !flAssigne.includes(nomAssigne)) return false;
+              if (flPriorite.length && !flPriorite.includes(normalizePriority(t.priorite))) return false;
+              if (flStatut.length && !flStatut.includes(t.statut)) return false;
+              if (flAvancement.length) {
+                const av = getAvancement(t);
+                const avLabel = t.statut === 'À planifier' ? null : (AVANCEMENT_BADGE[av]?.label ?? null);
+                if (!avLabel || !flAvancement.includes(avLabel)) return false;
+              }
+              if (flPeriodeDebut && t.dateFinPrevisionnelle && t.dateFinPrevisionnelle < flPeriodeDebut) return false;
+              if (flPeriodeFin && t.dateDebutPrevisionnelle && t.dateDebutPrevisionnelle > flPeriodeFin) return false;
+              return true;
+            });
+            return (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                {taches.length === 0 ? (
+                  <div className="py-14 text-center text-slate-400 text-sm">
+                    Aucune tâche créée. Cliquez sur &quot;Nouvelle tâche&quot; pour commencer.
+                  </div>
+                ) : tachesFiltrees.length === 0 ? (
+                  <div className="py-10 text-center text-slate-400 text-sm">Aucune tâche ne correspond aux filtres.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase tracking-wide">
+                          <th className="text-left py-3 px-4 font-semibold">Tâche</th>
+                          <th className="text-left py-3 px-4 font-semibold">Assignée à</th>
+                          <th className="text-left py-3 px-4 font-semibold">Priorité</th>
+                          <th className="text-left py-3 px-4 font-semibold">Statut d&apos;exécution</th>
+                          <th className="text-left py-3 px-4 font-semibold">Avancement</th>
+                          <th className="text-left py-3 px-4 font-semibold">Dates prév.</th>
+                          <th className="text-left py-3 px-4 font-semibold">Dates effect.</th>
+                          <th className="py-3 px-4 font-semibold text-center">Action</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {tachesFiltrees.map(t => {
+                          const av = getAvancement(t);
+                          const avBadgeTask = t.statut !== 'À planifier' ? AVANCEMENT_BADGE[av] : null;
+                          return (
+                            <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="py-3 px-4">
+                                <p className="font-medium text-slate-800">{t.libelle}</p>
+                              </td>
+                              <td className="py-3 px-4 text-slate-600 text-xs">
+                                {t.assigneA ? `${t.assigneA.prenoms} ${t.assigneA.nom}` : <span className="text-slate-300">—</span>}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className={`text-xs px-2 py-0.5 rounded-full border ${PRIORITE_COLORS[normalizePriority(t.priorite)] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                                  {normalizePriority(t.priorite)}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${STATUT_COLORS[t.statut] ?? 'bg-gray-100 text-gray-600'}`}>
+                                  {t.statut}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                {avBadgeTask
+                                  ? <span className={`text-xs px-2 py-0.5 rounded-full ${avBadgeTask.classes}`}>{avBadgeTask.label}</span>
+                                  : <span className="text-slate-300 text-xs">—</span>}
+                              </td>
+                              <td className="py-3 px-4 text-slate-500 text-xs whitespace-nowrap">
+                                <div>{fmtDate(t.dateDebutPrevisionnelle)}</div>
+                                <div className="text-slate-400">{fmtDate(t.dateFinPrevisionnelle)}</div>
+                              </td>
+                              <td className="py-3 px-4 text-slate-500 text-xs whitespace-nowrap">
+                                <div>{fmtDate(t.dateDebutEffective)}</div>
+                                <div className="text-slate-400">{fmtDate(t.dateFinEffective)}</div>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <button
+                                  title="Voir le détail de la tâche"
+                                  onClick={() => openDetail(t)}
+                                  className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-secondary/10 hover:bg-secondary/20 text-secondary transition-colors"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
         </div>
       )}
 
@@ -1242,17 +1647,26 @@ export default function ProjetDetailPage() {
                         return (
                           <div
                             key={task.id}
-                            draggable
+                            draggable={movingTaskId === null}
                             onDragStart={() => setDraggedTaskId(task.id)}
                             onDragEnd={() => { setDraggedTaskId(null); setDropTargetCol(null); }}
-                            className={`rounded-xl p-3 border-l-4 cursor-grab active:cursor-grabbing shadow-sm select-none transition-opacity ${
+                            className={`relative rounded-xl p-3 border-l-4 shadow-sm select-none transition-opacity ${
                               priorityBg
                             } ${
                               avancementBorder
                             } ${
-                              draggedTaskId === task.id ? 'opacity-30' : 'opacity-100'
+                              movingTaskId === task.id
+                                ? 'opacity-70 cursor-wait'
+                                : draggedTaskId === task.id
+                                ? 'opacity-30 cursor-grab'
+                                : 'opacity-100 cursor-grab active:cursor-grabbing'
                             }`}
                           >
+                            {movingTaskId === task.id && (
+                              <div className="absolute inset-0 rounded-xl flex items-center justify-center bg-white/50 z-10">
+                                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                              </div>
+                            )}
                             <p className="font-semibold text-slate-800 text-sm leading-snug">{task.libelle}</p>
                             {task.assigneA && (
                               <p className="text-xs text-slate-500 mt-1.5 truncate">
@@ -1288,21 +1702,67 @@ export default function ProjetDetailPage() {
       {/* ── TAB: DÉTAIL TÂCHE ── */}
       {activeTab === 'detail' && (
         <div className="space-y-5">
-          <div className="flex items-center gap-4">
-            <h2 className="text-lg font-bold text-primary">Détail tâche</h2>
-            <select
-              value={selectedTaskId ?? ''}
-              onChange={e => {
-                const t = taches.find(t => t.id === e.target.value);
-                if (t) openDetail(t);
-              }}
-              className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-            >
-              <option value="">— Sélectionner une tâche —</option>
-              {taches.map(t => (
-                <option key={t.id} value={t.id}>{t.libelle}</option>
-              ))}
-            </select>
+          {/* En-tête : titre à gauche, filtres + sélecteur à droite */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 px-4 py-3">
+            {(() => {
+              const tachesDt = taches.filter(t => {
+                const nomAssigne = t.assigneA ? `${t.assigneA.prenoms} ${t.assigneA.nom}` : '—';
+                if (dtAssigne.length && !dtAssigne.includes(nomAssigne)) return false;
+                if (dtPriorite.length && !dtPriorite.includes(normalizePriority(t.priorite))) return false;
+                if (dtStatut.length && !dtStatut.includes(t.statut)) return false;
+                if (dtAvancement.length) {
+                  const av = getAvancement(t);
+                  const avLabel = t.statut === 'À planifier' ? null : (AVANCEMENT_BADGE[av]?.label ?? null);
+                  if (!avLabel || !dtAvancement.includes(avLabel)) return false;
+                }
+                return true;
+              });
+              return (
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-bold text-primary flex-shrink-0">Détail tâche</h2>
+                  <div className="flex flex-wrap items-center gap-2 ml-auto">
+                    <MultiSelect
+                      label="Assigné à"
+                      options={[...new Set(taches.map(t => t.assigneA ? `${t.assigneA.prenoms} ${t.assigneA.nom}` : '—'))]}
+                      selected={dtAssigne}
+                      onChange={setDtAssigne}
+                    />
+                    <MultiSelect
+                      label="Priorité"
+                      options={['Bloquant', 'Critique', 'Normal']}
+                      selected={dtPriorite}
+                      onChange={setDtPriorite}
+                    />
+                    <MultiSelect
+                      label="Statut"
+                      options={['À planifier', 'A faire', 'En cours', 'En attente', 'Terminé', 'Validé']}
+                      selected={dtStatut}
+                      onChange={setDtStatut}
+                    />
+                    <MultiSelect
+                      label="Avancement"
+                      options={["En avance", "À l'heure", "En retard", "Hors délai"]}
+                      selected={dtAvancement}
+                      onChange={setDtAvancement}
+                    />
+                    <TaskSearchSelect
+                      taches={tachesDt}
+                      selectedId={selectedTaskId}
+                      onSelect={openDetail}
+                    />
+                    {(dtAssigne.length || dtPriorite.length || dtStatut.length || dtAvancement.length) ? (
+                      <button
+                        type="button"
+                        onClick={() => { setDtAssigne([]); setDtPriorite([]); setDtStatut([]); setDtAvancement([]); }}
+                        className="text-xs text-slate-400 hover:text-red-500 underline"
+                      >
+                        Réinitialiser
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {!selectedTask ? (
@@ -1371,7 +1831,7 @@ export default function ProjetDetailPage() {
                       onChange={e => setDetailEdit((d: any) => ({ ...d, statut: e.target.value }))}
                       className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium ${STATUT_COLORS[detailEdit.statut ?? selectedTask.statut] ?? 'bg-slate-100 text-slate-600'}`}
                     >
-                      {STATUTS_EXECUTION.map(s => (
+                      {getAllowedNextStatuts(selectedTask).map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
@@ -1419,13 +1879,42 @@ export default function ProjetDetailPage() {
 
                 {detailError && <p className="text-xs text-red-600">{detailError}</p>}
 
-                <button
-                  onClick={handleDetailSave}
-                  disabled={detailSaving}
-                  className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-semibold"
-                >
-                  {detailSaving ? 'Enregistrement…' : 'Enregistrer'}
-                </button>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    onClick={handleDetailSave}
+                    disabled={detailSaving}
+                    className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-semibold"
+                  >
+                    {detailSaving ? 'Enregistrement…' : 'Enregistrer'}
+                  </button>
+                  {!deleteTaskConfirm ? (
+                    <button
+                      onClick={() => { setDeleteTaskConfirm(true); setDeleteTaskError(''); }}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-red-600 border border-red-200 hover:bg-red-50"
+                    >
+                      <Trash2 size={13} /> Supprimer la tâche
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      <span className="text-xs text-red-700 font-medium">Supprimer &laquo;{selectedTask.libelle}&raquo; ?</span>
+                      <button
+                        onClick={handleDeleteTask}
+                        disabled={deleteTaskLoading}
+                        className="px-3 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded text-xs font-semibold"
+                      >
+                        {deleteTaskLoading ? 'Suppression…' : 'Confirmer'}
+                      </button>
+                      <button
+                        onClick={() => { setDeleteTaskConfirm(false); setDeleteTaskError(''); }}
+                        disabled={deleteTaskLoading}
+                        className="px-3 py-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded text-xs"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {deleteTaskError && <p className="text-xs text-red-600">{deleteTaskError}</p>}
               </div>
 
               {/* RIGHT: Commentaires */}
@@ -1465,15 +1954,64 @@ export default function ProjetDetailPage() {
                         <div className="bg-slate-50 rounded-xl p-3 text-sm">
                           <div className="flex items-center justify-between gap-2 mb-1.5">
                             <span className="font-semibold text-slate-700 text-xs">{getAuthorName(c.compteAcces)}</span>
-                            <span className="text-xs text-slate-400 shrink-0">{fmtDate(c.dateCreation)}</span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="text-xs text-slate-400">{fmtDate(c.dateCreation)}</span>
+                              <button
+                                onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.contenu); setDeleteCommentId(null); }}
+                                className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-primary"
+                                title="Modifier"
+                              ><Pencil size={11} /></button>
+                              <button
+                                onClick={() => { setDeleteCommentId(deleteCommentId === c.id ? null : c.id); setEditingCommentId(null); }}
+                                className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-600"
+                                title="Supprimer"
+                              ><Trash2 size={11} /></button>
+                            </div>
                           </div>
-                          <p className="text-slate-600 whitespace-pre-wrap">{c.contenu}</p>
-                          <button
-                            onClick={() => { setReplyingTo(replyingTo === c.id ? null : c.id); setReplyText(''); }}
-                            className="mt-2 flex items-center gap-1 text-xs text-secondary hover:underline"
-                          >
-                            <CornerDownRight size={11} /> Répondre
-                          </button>
+                          {editingCommentId === c.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                value={editCommentText}
+                                onChange={e => setEditCommentText(e.target.value)}
+                                rows={3}
+                                className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleEditComment(c.id)}
+                                  disabled={editCommentSaving || !editCommentText.trim()}
+                                  className="flex items-center gap-1 px-2.5 py-1 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded text-xs font-semibold"
+                                ><Check size={11} /> {editCommentSaving ? 'Enreg…' : 'Enregistrer'}</button>
+                                <button
+                                  onClick={() => setEditingCommentId(null)}
+                                  className="px-2.5 py-1 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded text-xs"
+                                >Annuler</button>
+                              </div>
+                            </div>
+                          ) : deleteCommentId === c.id ? (
+                            <div className="flex items-center gap-2 mt-1 bg-red-50 border border-red-100 rounded-lg px-2 py-1.5">
+                              <span className="text-xs text-red-700 flex-1">Supprimer ce commentaire ?</span>
+                              <button
+                                onClick={() => handleDeleteComment(c.id)}
+                                disabled={deleteCommentLoading}
+                                className="px-2.5 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded text-xs font-semibold"
+                              >{deleteCommentLoading ? '…' : 'Confirmer'}</button>
+                              <button
+                                onClick={() => setDeleteCommentId(null)}
+                                className="px-2.5 py-1 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 rounded text-xs"
+                              >Annuler</button>
+                            </div>
+                          ) : (
+                            <>
+                              <p className="text-slate-600 whitespace-pre-wrap">{c.contenu}</p>
+                              <button
+                                onClick={() => { setReplyingTo(replyingTo === c.id ? null : c.id); setReplyText(''); }}
+                                className="mt-2 flex items-center gap-1 text-xs text-secondary hover:underline"
+                              >
+                                <CornerDownRight size={11} /> Répondre
+                              </button>
+                            </>
+                          )}
                         </div>
 
                         {c.reponses && c.reponses.length > 0 && (
@@ -1482,9 +2020,56 @@ export default function ProjetDetailPage() {
                               <div key={r.id} className="bg-white border border-slate-100 rounded-xl p-3 text-sm">
                                 <div className="flex items-center justify-between gap-2 mb-1.5">
                                   <span className="font-semibold text-slate-700 text-xs">{getAuthorName(r.compteAcces)}</span>
-                                  <span className="text-xs text-slate-400 shrink-0">{fmtDate(r.dateCreation)}</span>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <span className="text-xs text-slate-400">{fmtDate(r.dateCreation)}</span>
+                                    <button
+                                      onClick={() => { setEditingCommentId(r.id); setEditCommentText(r.contenu); setDeleteCommentId(null); }}
+                                      className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-primary"
+                                      title="Modifier"
+                                    ><Pencil size={11} /></button>
+                                    <button
+                                      onClick={() => { setDeleteCommentId(deleteCommentId === r.id ? null : r.id); setEditingCommentId(null); }}
+                                      className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-600"
+                                      title="Supprimer"
+                                    ><Trash2 size={11} /></button>
+                                  </div>
                                 </div>
-                                <p className="text-slate-600 whitespace-pre-wrap">{r.contenu}</p>
+                                {editingCommentId === r.id ? (
+                                  <div className="space-y-2">
+                                    <textarea
+                                      value={editCommentText}
+                                      onChange={e => setEditCommentText(e.target.value)}
+                                      rows={2}
+                                      className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                                    />
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() => handleEditComment(r.id)}
+                                        disabled={editCommentSaving || !editCommentText.trim()}
+                                        className="flex items-center gap-1 px-2.5 py-1 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded text-xs font-semibold"
+                                      ><Check size={11} /> {editCommentSaving ? 'Enreg…' : 'Enregistrer'}</button>
+                                      <button
+                                        onClick={() => setEditingCommentId(null)}
+                                        className="px-2.5 py-1 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded text-xs"
+                                      >Annuler</button>
+                                    </div>
+                                  </div>
+                                ) : deleteCommentId === r.id ? (
+                                  <div className="flex items-center gap-2 mt-1 bg-red-50 border border-red-100 rounded-lg px-2 py-1.5">
+                                    <span className="text-xs text-red-700 flex-1">Supprimer cette réponse ?</span>
+                                    <button
+                                      onClick={() => handleDeleteComment(r.id)}
+                                      disabled={deleteCommentLoading}
+                                      className="px-2.5 py-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded text-xs font-semibold"
+                                    >{deleteCommentLoading ? '…' : 'Confirmer'}</button>
+                                    <button
+                                      onClick={() => setDeleteCommentId(null)}
+                                      className="px-2.5 py-1 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 rounded text-xs"
+                                    >Annuler</button>
+                                  </div>
+                                ) : (
+                                  <p className="text-slate-600 whitespace-pre-wrap">{r.contenu}</p>
+                                )}
                               </div>
                             ))}
                           </div>
