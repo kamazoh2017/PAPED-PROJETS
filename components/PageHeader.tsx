@@ -24,7 +24,7 @@ export default function PageHeader() {
   const labels = getBreadcrumbLabels(pathname);
   const canGoBack = pathname !== '/tableau-de-bord';
   const isDashboard = pathname === '/tableau-de-bord';
-  const [dashboardView, setDashboardView] = useState<'projet' | 'taches'>('projet');
+  const [dashboardView, setDashboardView] = useState<'projet' | 'taches'>('taches');
 
   const toggleDashboardFilters = () => {
     window.dispatchEvent(new CustomEvent('dashboard:toggle-filters'));
@@ -32,8 +32,8 @@ export default function PageHeader() {
 
   useEffect(() => {
     if (!isDashboard) return;
-    setDashboardView('projet');
-    window.dispatchEvent(new CustomEvent('dashboard:set-view', { detail: { view: 'projet' } }));
+    setDashboardView('taches');
+    window.dispatchEvent(new CustomEvent('dashboard:set-view', { detail: { view: 'taches' } }));
   }, [isDashboard]);
 
   const changeDashboardView = (view: 'projet' | 'taches') => {
@@ -54,23 +54,23 @@ export default function PageHeader() {
           <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1">
             <button
               type="button"
-              onClick={() => changeDashboardView('projet')}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                dashboardView === 'projet' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-              }`}
-              title="Visualisation projet"
-            >
-              Projet
-            </button>
-            <button
-              type="button"
               onClick={() => changeDashboardView('taches')}
               className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
                 dashboardView === 'taches' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
               }`}
-              title="Visualisation taches"
+              title="Visualisation tâches"
             >
-              Taches
+              Tâches
+            </button>
+            <button
+              type="button"
+              onClick={() => changeDashboardView('projet')}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                dashboardView === 'projet' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+              }`}
+              title="Visualisation projets"
+            >
+              Projets
             </button>
           </div>
         )}

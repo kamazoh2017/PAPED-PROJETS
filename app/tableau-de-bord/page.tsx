@@ -266,7 +266,7 @@ export default function DashboardPage() {
   const [showFilterPopup, setShowFilterPopup] = useState(false);
   const [filterChefProjet, setFilterChefProjet] = useState('');
   const [periodeAvancement, setPeriodeAvancement] = useState<'jours' | 'semaines' | 'mois'>('semaines');
-  const [dashboardView, setDashboardView] = useState<'projet' | 'taches'>('projet');
+  const [dashboardView, setDashboardView] = useState<'projet' | 'taches'>('taches');
 
   useEffect(() => {
     const fetchData = async () => {
