@@ -93,8 +93,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 export async function DELETE(request: NextRequest, { params }: Params) {
   const { user, err } = await requireAuth(request);
   if (err) return err;
-  // Suppression réservée au super admin
-  if (!user.compte.estSuperAdmin) return forbidden();
+  if (!canDo(user, 'personnes', 'delete')) return forbidden();
 
   try {
     const { id } = await params;

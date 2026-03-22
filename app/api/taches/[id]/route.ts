@@ -37,12 +37,47 @@ export async function PUT(
         statut: true,
         assigneAId: true,
         projetId: true,
+        dateDebutEffective: true,
+        dateDebutPrevisionnelle: true,
         assigneA: { select: { nom: true, prenoms: true } },
       },
     });
 
     if (!oldTache) {
       return NextResponse.json({ error: 'Tâche introuvable.' }, { status: 404 });
+    }
+
+    // ── Validation des transitions de statut ──────────────────────────────────
+    if (body.statut !== undefined && body.statut !== oldTache.statut) {
+      const newStatut: string = body.statut;
+      const hasStarted = !!oldTache.dateDebutEffective;
+      const today = new Date().toISOString().slice(0, 10);
+      const debutPrev = oldTache.dateDebutPrevisionnelle
+        ? oldTache.dateDebutPrevisionnelle.toISOString().slice(0, 10)
+        : null;
+
+      if (newStatut === 'À planifier' && hasStarted) {
+        return NextResponse.json(
+          { error: 'Impossible de repasser à "À planifier" : la tâche a déjà démarré.' },
+          { status: 400 }
+        );
+      }
+      if (newStatut === 'A faire' && hasStarted) {
+        if (!debutPrev || today >= debutPrev) {
+          return NextResponse.json(
+            { error: 'Impossible de repasser à "À faire" : la date de début prévisionnel est atteinte ou dépassée.' },
+            { status: 400 }
+          );
+        }
+      }
+      // "En attente" : interdit depuis Terminé ou Validé (états finaux)
+      if (newStatut === 'En attente' &&
+          (oldTache.statut === 'Terminé' || oldTache.statut === 'Validé')) {
+        return NextResponse.json(
+          { error: 'Une tâche terminée ou validée ne peut pas repasser en "En attente".' },
+          { status: 400 }
+        );
+      }
     }
 
     const prioriteNorm = body.priorite === undefined ? undefined : normalizePriority(body.priorite);
@@ -64,12 +99,38 @@ export async function PUT(
       updates.poidsPriorite = getPriorityWeight(prioriteNorm);
     }
 
-    // Remplir automatiquement les dates effectives
-    if (body.statut === 'En cours' && body.dateDebutEffective === undefined) {
-      updates.dateDebutEffective = new Date();
-    }
-    if (body.statut === 'Terminé' && body.dateFinEffective === undefined) {
-      updates.dateFinEffective = new Date();
+    // ── Effets de bord sur les dates effectives ───────────────────────────────
+    if (body.statut !== undefined && body.statut !== oldTache.statut) {
+      const newStatut: string = body.statut;
+
+      // → En cours : initialiser dateDebutEffective si pas encore définie
+      if (newStatut === 'En cours' && body.dateDebutEffective === undefined) {
+        if (!oldTache.dateDebutEffective) {
+          updates.dateDebutEffective = new Date();
+        }
+      }
+
+      // → Terminé ou Validé : fixer dateFinEffective ; initialiser dateDebutEffective si besoin
+      if ((newStatut === 'Terminé' || newStatut === 'Validé') && body.dateFinEffective === undefined) {
+        updates.dateFinEffective = new Date();
+        if (!oldTache.dateDebutEffective && body.dateDebutEffective === undefined) {
+          updates.dateDebutEffective = new Date();
+        }
+      }
+
+      // Terminé ou Validé → En cours : remettre dateFinEffective à null
+      if (newStatut === 'En cours' &&
+          (oldTache.statut === 'Terminé' || oldTache.statut === 'Validé') &&
+          body.dateFinEffective === undefined) {
+        updates.dateFinEffective = null;
+      }
+
+      // En attente → Terminé ou Validé : fixer dateFinEffective
+      if ((newStatut === 'Terminé' || newStatut === 'Validé') &&
+          oldTache.statut === 'En attente' &&
+          body.dateFinEffective === undefined) {
+        updates.dateFinEffective = new Date();
+      }
     }
 
     // Nettoyer les undefined
@@ -151,7 +212,7 @@ export async function DELETE(
 ) {
   const { user, err } = await requireAuth(request);
   if (err) return err;
-  if (!canDo(user, 'detail-projet', 'manage-backlog')) return forbidden();
+  if (!canDo(user, 'detail-projet', 'delete-tache')) return forbidden();
 
   try {
     const { id } = await params;

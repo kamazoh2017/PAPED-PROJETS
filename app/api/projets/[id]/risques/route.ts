@@ -34,7 +34,7 @@ export async function GET(
 /**
  * POST /api/projets/[id]/risques
  * Reçoit les scores calculés par le dashboard et les persiste par upsert.
- * Body : { retard: number, horsDelai: number, progression: number, suspendu: number, global: number }
+ * Body : { retard, horsDelai, progression, suspendu, global } (nombres 0–100)
  */
 export async function POST(
   request: NextRequest,
@@ -45,11 +45,11 @@ export async function POST(
     const body = await request.json();
 
     const indicateurs = [
-      { libelle: 'Retard',             taux: Number(body.retard      ?? 0) },
-      { libelle: 'Hors délai',         taux: Number(body.horsDelai   ?? 0) },
-      { libelle: 'Progression faible', taux: Number(body.progression ?? 0) },
-      { libelle: 'Suspendu',           taux: Number(body.suspendu    ?? 0) },
-      { libelle: 'Global',             taux: Number(body.global      ?? 0) },
+      { libelle: 'retard',      taux: Number(body.retard      ?? 0) },
+      { libelle: 'horsDelai',   taux: Number(body.horsDelai   ?? 0) },
+      { libelle: 'progression', taux: Number(body.progression ?? 0) },
+      { libelle: 'suspendu',    taux: Number(body.suspendu    ?? 0) },
+      { libelle: 'global',      taux: Number(body.global      ?? 0) },
     ].map(({ libelle, taux }) => {
       const gravite = graviteFromScore(taux);
       return { libelle, taux, gravite, couleur: couleurFromGravite(gravite) };

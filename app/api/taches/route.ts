@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { user, err } = await requireAuth(request);
   if (err) return err;
-  if (!canDo(user, 'detail-projet', 'manage-backlog')) return forbidden();
+  if (!canDo(user, 'detail-projet', 'create-tache')) return forbidden();
 
   try {
     const body = await request.json();

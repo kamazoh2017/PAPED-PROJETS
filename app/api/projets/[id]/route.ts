@@ -8,7 +8,7 @@ export async function GET(
 ) {
   const { user, err } = await requireAuth(request);
   if (err) return err;
-  if (!canDo(user, 'projets', 'view')) return forbidden();
+  if (!canDo(user, 'projets', 'view-detail')) return forbidden();
 
   try {
     const { id } = await params;
@@ -33,6 +33,7 @@ export async function GET(
             },
           },
         },
+        risques: true,
       },
     });
 
@@ -52,7 +53,7 @@ export async function PUT(
 ) {
   const { user, err } = await requireAuth(request);
   if (err) return err;
-  if (!canDo(user, 'projets', 'update')) return forbidden();
+  if (!canDo(user, 'detail-projet', 'edit-info')) return forbidden();
 
   try {
     const { id } = await params;
@@ -122,7 +123,7 @@ export async function DELETE(
 ) {
   const { user, err } = await requireAuth(request);
   if (err) return err;
-  if (!canDo(user, 'projets', 'delete')) return forbidden();
+  if (!canDo(user, 'detail-projet', 'delete')) return forbidden();
 
   try {
     const { id } = await params;

@@ -31,9 +31,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    if (!body?.libelle || !body?.chefProjetId) {
+    if (!body?.libelle || !body?.chefProjetId || !body?.dateDebutPrevisionnelle || !body?.dateFinPrevisionnelle) {
       return NextResponse.json(
-        { error: 'Le libelle du projet et le chef de projet sont obligatoires.' },
+        { error: 'Le libellé, le chef de projet, la date de début et la date de fin prévisionnelles sont obligatoires.' },
         { status: 400 }
       );
     }
