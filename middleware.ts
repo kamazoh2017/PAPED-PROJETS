@@ -13,6 +13,9 @@ export function middleware(request: NextRequest) {
   // Routes d'authentification : publiques (login, logout, me, change-password)
   if (pathname.startsWith('/api/auth/')) return NextResponse.next();
 
+  // Routes cron : protégées par CRON_SECRET, pas par cookie de session
+  if (pathname.startsWith('/api/cron/')) return NextResponse.next();
+
   // Toutes les autres routes API nécessitent un cookie de session
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (!token) {
