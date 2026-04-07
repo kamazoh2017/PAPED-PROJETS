@@ -1581,18 +1581,20 @@ export default function ProjetDetailPage() {
                 <label className="block text-xs font-medium text-slate-600 mb-1">Début prévisionnel</label>
                 <input
                   type="date"
-                  readOnly
-                  value={toInputDate(projet.dateDebutPrevisionnelle)}
-                  className="w-full px-3 py-2 border border-slate-100 rounded-lg text-sm bg-slate-50 text-slate-400 cursor-not-allowed"
+                  readOnly={!session?.estSuperAdmin}
+                  value={detailEdit.dateDebutPrevisionnelle ?? toInputDate(projet.dateDebutPrevisionnelle)}
+                  onChange={e => session?.estSuperAdmin && setDetailEdit((d: any) => ({ ...d, dateDebutPrevisionnelle: e.target.value }))}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm ${session?.estSuperAdmin ? 'border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30' : 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed'}`}
                 />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Fin prévisionnelle</label>
                 <input
                   type="date"
-                  readOnly
-                  value={toInputDate(projet.dateFinPrevisionnelle)}
-                  className="w-full px-3 py-2 border border-slate-100 rounded-lg text-sm bg-slate-50 text-slate-400 cursor-not-allowed"
+                  readOnly={!session?.estSuperAdmin}
+                  value={detailEdit.dateFinPrevisionnelle ?? toInputDate(projet.dateFinPrevisionnelle)}
+                  onChange={e => session?.estSuperAdmin && setDetailEdit((d: any) => ({ ...d, dateFinPrevisionnelle: e.target.value }))}
+                  className={`w-full px-3 py-2 border rounded-lg text-sm ${session?.estSuperAdmin ? 'border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30' : 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed'}`}
                 />
               </div>
               <div>
@@ -2509,7 +2511,7 @@ export default function ProjetDetailPage() {
                 <div>
                   <p className="text-xs font-medium text-slate-600 mb-2">Dates prévisionnelles</p>
                   <div className="grid grid-cols-2 gap-3">
-                    {(['À planifier', 'A faire'].includes(selectedTask.statut)) ? (
+                    {(session?.estSuperAdmin || ['À planifier', 'A faire'].includes(selectedTask.statut)) ? (
                       <>
                         <div>
                           <label className="block text-xs text-slate-400 mb-1">Début</label>
