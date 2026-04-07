@@ -242,6 +242,11 @@ model SousTache {
   ordre        Int      @default(0)
   dateCreation DateTime @default(now())
 
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
   tache Tache @relation(fields: [tacheId], references: [id], onDelete: Cascade)
 
   @@map("sous_taches")
