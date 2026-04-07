@@ -2509,14 +2509,39 @@ export default function ProjetDetailPage() {
                 <div>
                   <p className="text-xs font-medium text-slate-600 mb-2">Dates prévisionnelles</p>
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">Début</label>
-                      <div className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm text-slate-700">{fmtDate(selectedTask.dateDebutPrevisionnelle)}</div>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">Fin</label>
-                      <div className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm text-slate-700">{fmtDate(selectedTask.dateFinPrevisionnelle)}</div>
-                    </div>
+                    {(['À planifier', 'A faire'].includes(selectedTask.statut)) ? (
+                      <>
+                        <div>
+                          <label className="block text-xs text-slate-400 mb-1">Début</label>
+                          <input
+                            type="date"
+                            value={detailEdit.dateDebutPrevisionnelle ?? ''}
+                            onChange={e => setDetailEdit((d: any) => ({ ...d, dateDebutPrevisionnelle: e.target.value }))}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-400 mb-1">Fin</label>
+                          <input
+                            type="date"
+                            value={detailEdit.dateFinPrevisionnelle ?? ''}
+                            onChange={e => setDetailEdit((d: any) => ({ ...d, dateFinPrevisionnelle: e.target.value }))}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <label className="block text-xs text-slate-400 mb-1">Début</label>
+                          <div className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm text-slate-700">{fmtDate(selectedTask.dateDebutPrevisionnelle)}</div>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-400 mb-1">Fin</label>
+                          <div className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm text-slate-700">{fmtDate(selectedTask.dateFinPrevisionnelle)}</div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
