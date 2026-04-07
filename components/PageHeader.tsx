@@ -7,14 +7,19 @@ import { useEffect, useState } from 'react';
 function getBreadcrumbLabels(pathname: string): string[] {
   if (pathname === '/connexion') return ['CONNEXION'];
   if (pathname === '/tableau-de-bord') return ['DASHBOARD'];
-  if (pathname === '/projets') return ['PROJETS'];
+  if (pathname === '/projets/tableau-de-bord') return ['PROJETS', 'DASHBOARD'];
+  if (pathname === '/projets') return ['PROJETS', 'LISTE'];
   if (pathname === '/personnes') return ['RESOURCES'];
   if (pathname === '/entites') return ['ENTITE'];
   if (pathname === '/comptes-acces') return ['COMPTES-ACCES'];
   if (pathname.startsWith('/comptes-acces/autorisations/')) return ['COMPTES-ACCES', 'AUTORISATIONS'];
   if (pathname === '/profil') return ['PROFIL'];
-  if (pathname.endsWith('/gantt')) return ['PROJETS', 'DETAIL-PROJET', 'GANTT'];
-  if (pathname.startsWith('/projets/')) return ['PROJETS', 'DETAIL-PROJET'];
+  if (pathname === '/operations') return ['OPÉRATIONS', 'DASHBOARD'];
+  if (pathname.startsWith('/operations/')) return ['OPÉRATIONS', 'DÉTAIL'];
+  if (pathname === '/occurrences') return ['OPÉRATIONS', 'OCCURRENCES'];
+  if (pathname.startsWith('/occurrences/')) return ['OPÉRATIONS', 'OCCURRENCES', 'DÉTAIL'];
+  if (pathname.endsWith('/gantt')) return ['PROJETS', 'LISTE', 'GANTT'];
+  if (pathname.startsWith('/projets/')) return ['PROJETS', 'DÉTAIL'];
   return ['DASHBOARD'];
 }
 
@@ -23,7 +28,7 @@ export default function PageHeader() {
   const router = useRouter();
   const labels = getBreadcrumbLabels(pathname);
   const canGoBack = pathname !== '/tableau-de-bord';
-  const isDashboard = pathname === '/tableau-de-bord';
+  const isProjetDashboard = pathname === '/projets/tableau-de-bord';
   const [dashboardView, setDashboardView] = useState<'projet' | 'taches'>('taches');
 
   const toggleDashboardFilters = () => {
@@ -31,10 +36,10 @@ export default function PageHeader() {
   };
 
   useEffect(() => {
-    if (!isDashboard) return;
+    if (!isProjetDashboard) return;
     setDashboardView('taches');
     window.dispatchEvent(new CustomEvent('dashboard:set-view', { detail: { view: 'taches' } }));
-  }, [isDashboard]);
+  }, [isProjetDashboard]);
 
   const changeDashboardView = (view: 'projet' | 'taches') => {
     setDashboardView(view);
@@ -50,7 +55,7 @@ export default function PageHeader() {
         ))}
       </p>
       <div className="flex items-center gap-2">
-        {isDashboard && (
+        {isProjetDashboard && (
           <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-1">
             <button
               type="button"
@@ -75,7 +80,7 @@ export default function PageHeader() {
           </div>
         )}
 
-        {isDashboard && (
+        {isProjetDashboard && (
           <button
             type="button"
             onClick={toggleDashboardFilters}

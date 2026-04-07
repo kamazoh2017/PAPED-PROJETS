@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { LayoutGrid, List } from 'lucide-react';
 
 interface Projet {
   id: string;
@@ -12,7 +13,7 @@ interface Projet {
   dateCreation: string;
   dateDebutPrevisionnelle?: string;
   dateFinPrevisionnelle?: string;
-  chefProjet?: { nom: string; prenoms: string };
+  chefProjet?: { id: string; nom: string; prenoms: string };
   equipeProjet: any[];
   taches: any[];
 }
@@ -77,14 +78,20 @@ function getAvanancementProjet(projet: Projet): Avancement | null {
 export default function ProjetsPage() {
   const [projets, setProjets] = useState<Projet[]>([]);
   const [personnes, setPersonnes] = useState<Personne[]>([]);
+  const [entites, setEntites] = useState<{ id: string; libelle: string; typeEntite?: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ libelle: '', description: '', chefProjetId: '', dateDebutPrevisionnelle: '', dateFinPrevisionnelle: '' });
+  const [formData, setFormData] = useState({ libelle: '', description: '', chefProjetId: '', entiteId: '', dateDebutPrevisionnelle: '', dateFinPrevisionnelle: '' });
   const [formError, setFormError] = useState('');
+  const [view, setView] = useState<'card' | 'list'>('list');
+  const [fStatut, setFStatut] = useState('');
+  const [fAvancement, setFAvancement] = useState('');
+  const [fChefProjetId, setFChefProjetId] = useState('');
 
   useEffect(() => {
     fetchProjets();
     fetchPersonnes();
+    fetch('/api/entites').then(r => r.json()).then(d => setEntites(Array.isArray(d) ? d : []));
   }, []);
 
   const fetchProjets = async () => {
@@ -142,6 +149,7 @@ export default function ProjetsPage() {
           libelle: formData.libelle,
           description: formData.description,
           chefProjetId: formData.chefProjetId,
+          entiteId: formData.entiteId || null,
           dateDebutPrevisionnelle: formData.dateDebutPrevisionnelle,
           dateFinPrevisionnelle: formData.dateFinPrevisionnelle,
         }),
@@ -155,7 +163,7 @@ export default function ProjetsPage() {
 
       if (res.ok) {
         await fetchProjets();
-        setFormData({ libelle: '', description: '', chefProjetId: '', dateDebutPrevisionnelle: '', dateFinPrevisionnelle: '' });
+        setFormData({ libelle: '', description: '', chefProjetId: '', entiteId: '', dateDebutPrevisionnelle: '', dateFinPrevisionnelle: '' });
         setShowForm(false);
       }
     } catch (error) {
@@ -164,16 +172,104 @@ export default function ProjetsPage() {
     }
   };
 
+  const chefs = Array.from(
+    new Map(
+      projets
+        .filter(p => p.chefProjet)
+        .map(p => [p.chefProjet!.id, p.chefProjet!])
+    ).values()
+  ).sort((a, b) => a.nom.localeCompare(b.nom));
+
+  const filteredProjets = projets.filter(p => {
+    if (fStatut && p.statut !== fStatut) return false;
+    if (fChefProjetId && p.chefProjet?.id !== fChefProjetId) return false;
+    if (fAvancement) {
+      const av = (p.etatAvancement ?? getAvanancementProjet(p)) as Avancement | null;
+      if (av !== fAvancement) return false;
+    }
+    return true;
+  });
+  const hasFilters = !!(fStatut || fAvancement || fChefProjetId);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-4xl font-bold text-primary">Projets</h1>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="bg-secondary hover:bg-secondary/90 text-white px-6 py-2 rounded-lg font-semibold"
-        >
-          + Nouveau projet
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={fStatut}
+            onChange={e => setFStatut(e.target.value)}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none"
+          >
+            <option value="">Tous statuts</option>
+            {['En démarrage', 'En cours', 'Terminé', 'Clôturé', 'Suspendu'].map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <select
+            value={fAvancement}
+            onChange={e => setFAvancement(e.target.value)}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none"
+          >
+            <option value="">Tout avancement</option>
+            {(Object.entries(AVANCEMENT_CONFIG) as [Avancement, { label: string; classes: string }][]).map(([key, cfg]) => (
+              <option key={key} value={key}>{cfg.label}</option>
+            ))}
+          </select>
+          <select
+            value={fChefProjetId}
+            onChange={e => setFChefProjetId(e.target.value)}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 focus:outline-none"
+          >
+            <option value="">Tous chefs de projet</option>
+            {chefs.map(c => (
+              <option key={c.id} value={c.id}>{c.prenoms} {c.nom}</option>
+            ))}
+          </select>
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={() => { setFStatut(''); setFAvancement(''); setFChefProjetId(''); }}
+              className="text-xs text-slate-400 underline hover:text-slate-600"
+            >
+              Réinitialiser
+            </button>
+          )}
+          {hasFilters && (
+            <span className="text-xs text-slate-400">{filteredProjets.length} résultat{filteredProjets.length !== 1 ? 's' : ''}</span>
+          )}
+          <div className="h-5 w-px bg-slate-200 mx-1" />
+          <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setView('card')}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
+                view === 'card' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'
+              }`}
+              title="Vue cartes"
+            >
+              <LayoutGrid size={14} />
+              Cartes
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('list')}
+              className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
+                view === 'list' ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100'
+              }`}
+              title="Vue liste"
+            >
+              <List size={14} />
+              Liste
+            </button>
+          </div>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="bg-secondary hover:bg-secondary/90 text-white px-6 py-2 rounded-lg font-semibold"
+          >
+            + Nouveau projet
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -211,6 +307,21 @@ export default function ProjetsPage() {
               {personnes.map((personne) => (
                 <option key={personne.id} value={personne.id}>
                   {personne.nom} {personne.prenoms} - {personne.fonction}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Entité porteuse (Owner)</label>
+            <select
+              value={formData.entiteId}
+              onChange={(e) => setFormData({ ...formData, entiteId: e.target.value })}
+              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg"
+            >
+              <option value="">— Aucune —</option>
+              {entites.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.typeEntite ? `[${e.typeEntite}] ` : ''}{e.libelle}
                 </option>
               ))}
             </select>
@@ -261,9 +372,11 @@ export default function ProjetsPage() {
         <p className="text-gray-500">Chargement...</p>
       ) : projets.length === 0 ? (
         <p className="text-gray-500">Aucun projet créé.</p>
-      ) : (
+      ) : filteredProjets.length === 0 ? (
+        <p className="text-gray-500">Aucun projet ne correspond aux filtres sélectionnés.</p>
+      ) : view === 'card' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projets.map((projet) => {
+          {filteredProjets.map((projet) => {
             const avancement = (projet.etatAvancement ?? getAvanancementProjet(projet)) as Avancement | null;
             const avCfg = avancement ? (AVANCEMENT_CONFIG[avancement] ?? null) : null;
             return (
@@ -296,6 +409,64 @@ export default function ProjetsPage() {
             </Link>
             );
           })}
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-slate-600">Projet</th>
+                <th className="text-left px-4 py-3 font-semibold text-slate-600">Statut</th>
+                <th className="text-left px-4 py-3 font-semibold text-slate-600">Avancement</th>
+                <th className="text-left px-4 py-3 font-semibold text-slate-600">Chef de projet</th>
+                <th className="text-center px-4 py-3 font-semibold text-slate-600">Équipe</th>
+                <th className="text-center px-4 py-3 font-semibold text-slate-600">Tâches</th>
+                <th className="text-right px-4 py-3 font-semibold text-slate-600">Fin prévisionnelle</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredProjets.map((projet) => {
+                const avancement = (projet.etatAvancement ?? getAvanancementProjet(projet)) as Avancement | null;
+                const avCfg = avancement ? (AVANCEMENT_CONFIG[avancement] ?? null) : null;
+                return (
+                  <tr key={projet.id} className="hover:bg-slate-50 transition">
+                    <td className="px-4 py-3">
+                      <Link href={`/projets/${projet.id}`} className="font-semibold text-primary hover:underline">
+                        {projet.libelle}
+                      </Link>
+                      {projet.description && (
+                        <p className="mt-0.5 text-xs text-slate-400 line-clamp-1">{projet.description}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-block rounded px-2 py-0.5 text-xs font-medium" style={getProjetStatutStyle(projet.statut)}>
+                        {projet.statut}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {avCfg ? (
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded ${avCfg.classes}`}>
+                          {avCfg.label}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700 text-xs">
+                      {projet.chefProjet ? `${projet.chefProjet.prenoms} ${projet.chefProjet.nom}` : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center text-slate-600 font-medium">{projet.equipeProjet.length}</td>
+                    <td className="px-4 py-3 text-center text-slate-600 font-medium">{projet.taches.length}</td>
+                    <td className="px-4 py-3 text-right text-xs text-slate-500">
+                      {projet.dateFinPrevisionnelle
+                        ? new Date(projet.dateFinPrevisionnelle).toLocaleDateString('fr-FR')
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
