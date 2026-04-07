@@ -6,7 +6,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, err } = await requireAuth(request);
+  const { err } = await requireAuth(request);
   if (err) return err;
   // Tous les rôles peuvent consulter un projet (canDo 'projets:view-detail' accordé à tous)
 

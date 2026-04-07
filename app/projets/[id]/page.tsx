@@ -2287,7 +2287,7 @@ export default function ProjetDetailPage() {
                       <div className="flex items-center gap-1.5">
                         <h3 className="font-semibold text-sm">{cfg.label}</h3>
                         {dropLocked && (
-                          <Lock size={11} className="opacity-60" title="Validation réservée aux Gestionnaires et Coordinateurs" />
+                          <Lock size={11} className="opacity-60" aria-label="Validation réservée aux Gestionnaires et Coordinateurs" />
                         )}
                       </div>
                       <span className="text-xs font-bold bg-white/60 px-2 py-0.5 rounded-full">{tasks.length}</span>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { flattenPermissions, PERMISSIONS_CATALOG } from '@/lib/permissions-catalog';
 import { requireAuth, canDo, forbidden, canManageComptes } from '@/lib/require-auth';
-import { getDefaultPermissions, roleHasPermission, type RoleKey } from '@/lib/roles-permissions';
+import { roleHasPermission, type RoleKey } from '@/lib/roles-permissions';
 
 type Params = { params: Promise<{ id: string }> };
 
