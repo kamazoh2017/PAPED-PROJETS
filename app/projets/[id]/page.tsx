@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Users, Building2, CheckCircle2, Plus, X, MessageSquare, CornerDownRight, Send, Trash2, ShieldCheck, AlertCircle, AlertTriangle, ShieldAlert, ChevronDown, Search, Pencil, Check } from 'lucide-react';
+import { Users, Building2, CheckCircle2, Plus, X, MessageSquare, CornerDownRight, Send, Trash2, ShieldCheck, AlertCircle, AlertTriangle, ShieldAlert, ChevronDown, Search, Pencil, Check, ChevronRight, ArrowLeft, Lock, ListChecks } from 'lucide-react';
+import { ROLES_PARTIE_PRENANTE, NIVEAUX_INFLUENCE_INTERET, TYPE_ACTEUR } from '@/lib/parties-prenantes-constants';
 import ProjectGantt from '@/components/ProjectGantt';
 
 interface Entite {
@@ -60,17 +61,26 @@ interface Tache {
   commentaires?: Commentaire[];
 }
 
-interface PartiePrenante {
+interface ActeurCollectif {
   id: string;
   libelle: string;
-  type: string;
-  entite?: Entite;
-  responsable?: Personne;
+  description?: string;
 }
 
-interface PartiePrenanteProjets {
+interface PartiePrenante {
   id: string;
-  partiePrenante: PartiePrenante;
+  projetId: string;
+  typeActeur: 'ORGANISATIONNEL' | 'ACTEUR_COLLECTIF_NON_ORGANISATIONNEL';
+  ressourceId?: string | null;
+  acteurCollectifId?: string | null;
+  role: string;
+  influence: string;
+  interet: string;
+  attentesTexte?: string | null;
+  strategieCommunication?: string | null;
+  notes?: string | null;
+  ressource?: (Personne & { entite?: Entite }) | null;
+  acteurCollectif?: ActeurCollectif | null;
 }
 
 interface RisqueProjet {
@@ -97,8 +107,9 @@ interface Projet {
   chefProjet: Personne;
   equipeProjet: Personne[];
   taches: Tache[];
-  partiesPrenantes: PartiePrenanteProjets[];
+  partiesPrenantes: PartiePrenante[];
   risques?: RisqueProjet[];
+  entitePorteuse?: { id: string; libelle: string; typeEntite?: string | null } | null;
 }
 
 const PRIORITE_COLORS: Record<string, string> = {
@@ -447,6 +458,462 @@ function TaskSearchSelect({ taches, selectedId, onSelect }: TaskSearchSelectProp
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// COMPOSANT : Registre des parties prenantes
+// ─────────────────────────────────────────────────────────────────────────────
+
+const BADGE_NIVEAU: Record<string, string> = {
+  Faible:   'bg-green-100 text-green-700',
+  Moyen:    'bg-yellow-100 text-yellow-700',
+  Élevé:    'bg-orange-100 text-orange-700',
+  Critique: 'bg-red-100 text-red-700',
+};
+
+function RegistrePartiesPrenantes({
+  projetId, partiesPrenantes, ressources, onRefresh,
+}: {
+  projetId: string;
+  partiesPrenantes: PartiePrenante[];
+  ressources: Personne[];
+  onRefresh: () => void;
+}) {
+  // Wizard state
+  const [showWizard, setShowWizard] = useState(false);
+  const [etape, setEtape] = useState<1 | 2 | 3 | 4>(1);
+  const [typeActeur, setTypeActeur] = useState<string>('');
+  const [saving, setSaving] = useState(false);
+  const [wizardError, setWizardError] = useState('');
+
+  // Étape 3A — organisationnel
+  const [ressourcesSelectionnees, setRessourcesSelectionnees] = useState<string[]>([]);
+
+  // Étape 3B — acteur collectif
+  const [acteurs, setActeurs] = useState<ActeurCollectif[]>([]);
+  const [acteurSelId, setActeurSelId] = useState('');
+  const [nouvelActeur, setNouvelActeur] = useState({ libelle: '', description: '' });
+  const [creerNouvelActeur, setCreerNouvelActeur] = useState(false);
+
+  // Étape 4 — infos communes
+  const FORM_VIDE = { role: '', influence: 'Moyen', interet: 'Moyen', attentesTexte: '', strategieCommunication: '', notes: '' };
+  const [form, setForm] = useState(FORM_VIDE);
+
+  // Ligne en édition
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState(FORM_VIDE);
+  const [editSaving, setEditSaving] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // Expandé
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const resetWizard = () => {
+    setEtape(1); setTypeActeur(''); setRessourcesSelectionnees([]);
+    setActeurSelId(''); setNouvelActeur({ libelle: '', description: '' }); setCreerNouvelActeur(false);
+    setForm(FORM_VIDE); setWizardError(''); setSaving(false);
+  };
+
+  const fetchActeurs = async () => {
+    const res = await fetch('/api/acteurs-collectifs');
+    const d = await res.json();
+    setActeurs(Array.isArray(d) ? d : []);
+  };
+
+  const openWizard = () => { resetWizard(); fetchActeurs(); setShowWizard(true); };
+
+  const goEtape3 = () => {
+    if (!typeActeur) { setWizardError('Choisissez un type.'); return; }
+    setWizardError('');
+    setEtape(typeActeur === TYPE_ACTEUR.ORGANISATIONNEL ? 3 : (fetchActeurs(), 3));
+  };
+
+  const goEtape4 = () => {
+    if (typeActeur === TYPE_ACTEUR.ORGANISATIONNEL && ressourcesSelectionnees.length === 0) {
+      setWizardError('Sélectionnez au moins une ressource.'); return;
+    }
+    if (typeActeur === TYPE_ACTEUR.ACTEUR_COLLECTIF && !acteurSelId && !creerNouvelActeur) {
+      setWizardError('Choisissez ou créez un acteur collectif.'); return;
+    }
+    setWizardError(''); setEtape(4);
+  };
+
+  const handleSubmit = async () => {
+    if (!form.role) { setWizardError('Le rôle est obligatoire.'); return; }
+    setSaving(true); setWizardError('');
+
+    try {
+      // Pour les acteurs organisationnels, on peut avoir plusieurs ressources → une PP par ressource
+      const targets = typeActeur === TYPE_ACTEUR.ORGANISATIONNEL
+        ? ressourcesSelectionnees
+        : [null];
+
+      // Si nouvel acteur collectif, le créer d'abord
+      let acId = acteurSelId;
+      if (typeActeur === TYPE_ACTEUR.ACTEUR_COLLECTIF && creerNouvelActeur) {
+        const r = await fetch('/api/acteurs-collectifs', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(nouvelActeur),
+        });
+        if (!r.ok) { setWizardError((await r.json()).error || 'Erreur création acteur.'); setSaving(false); return; }
+        acId = (await r.json()).id;
+      }
+
+      for (const rid of targets) {
+        const body = {
+          typeActeur,
+          ressourceId:       typeActeur === TYPE_ACTEUR.ORGANISATIONNEL ? rid : undefined,
+          acteurCollectifId: typeActeur === TYPE_ACTEUR.ACTEUR_COLLECTIF ? acId : undefined,
+          ...form,
+        };
+        const res = await fetch(`/api/projets/${projetId}/parties-prenantes`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) { setWizardError((await res.json()).error || 'Erreur.'); setSaving(false); return; }
+      }
+
+      onRefresh(); setShowWizard(false); resetWizard();
+    } catch { setWizardError('Erreur réseau.'); }
+    finally { setSaving(false); }
+  };
+
+  const handleEdit = async (id: string) => {
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/projets/${projetId}/parties-prenantes/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
+      });
+      if (!res.ok) return;
+      onRefresh(); setEditId(null);
+    } finally { setEditSaving(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    await fetch(`/api/projets/${projetId}/parties-prenantes/${id}`, { method: 'DELETE' });
+    onRefresh(); setDeleteId(null);
+  };
+
+  const labelActeur = (pp: PartiePrenante) =>
+    pp.typeActeur === 'ORGANISATIONNEL'
+      ? `${pp.ressource?.prenoms} ${pp.ressource?.nom} · ${pp.ressource?.entite?.libelle ?? '—'}`
+      : pp.acteurCollectif?.libelle ?? '—';
+
+  // ── Wizard modal ──
+  const Wizard = () => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-5">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-lg text-slate-800">Ajouter une partie prenante</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Étape {etape} / 4</p>
+          </div>
+          <button onClick={() => setShowWizard(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+        </div>
+
+        {/* Étape 1 : type */}
+        {etape === 1 && (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-slate-700">Type d'acteur</p>
+            {[
+              { val: TYPE_ACTEUR.ORGANISATIONNEL, label: 'Organisationnel', desc: 'Une direction, un service, un programme (représenté par une ressource)' },
+              { val: TYPE_ACTEUR.ACTEUR_COLLECTIF, label: 'Acteur collectif non organisationnel', desc: 'Groupe, association, communauté, partenaire externe…' },
+            ].map(opt => (
+              <button
+                key={opt.val}
+                onClick={() => setTypeActeur(opt.val)}
+                className={`w-full text-left border rounded-xl p-4 transition-colors ${typeActeur === opt.val ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-slate-300'}`}
+              >
+                <p className="text-sm font-semibold text-slate-800">{opt.label}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{opt.desc}</p>
+              </button>
+            ))}
+            {wizardError && <p className="text-xs text-red-600">{wizardError}</p>}
+            <div className="flex justify-end">
+              <button onClick={goEtape3} className="bg-primary hover:bg-primary/90 text-white px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1">
+                Suivant <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Étape 3A : organisationnel — choix ressources */}
+        {etape === 3 && typeActeur === TYPE_ACTEUR.ORGANISATIONNEL && (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-slate-700">Sélectionner les ressources (point focal)</p>
+            <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-50">
+              {ressources.map(r => {
+                const checked = ressourcesSelectionnees.includes(r.id);
+                return (
+                  <label key={r.id} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 ${checked ? 'bg-primary/5' : ''}`}>
+                    <input
+                      type="checkbox" checked={checked}
+                      onChange={() => setRessourcesSelectionnees(prev =>
+                        checked ? prev.filter(x => x !== r.id) : [...prev, r.id]
+                      )}
+                      className="accent-primary"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{r.prenoms} {r.nom}</p>
+                      <p className="text-xs text-slate-400">{r.fonction} · {(r as any).entite?.libelle ?? '—'}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            {wizardError && <p className="text-xs text-red-600">{wizardError}</p>}
+            <div className="flex justify-between">
+              <button onClick={() => { setEtape(1); setWizardError(''); }} className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1"><ArrowLeft size={13} /> Retour</button>
+              <button onClick={goEtape4} className="bg-primary hover:bg-primary/90 text-white px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1">Suivant <ChevronRight size={14} /></button>
+            </div>
+          </div>
+        )}
+
+        {/* Étape 3B : acteur collectif */}
+        {etape === 3 && typeActeur === TYPE_ACTEUR.ACTEUR_COLLECTIF && (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-slate-700">Acteur collectif</p>
+            {!creerNouvelActeur ? (
+              <>
+                <select
+                  value={acteurSelId}
+                  onChange={e => setActeurSelId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                >
+                  <option value="">— Sélectionner un acteur existant —</option>
+                  {acteurs.map(a => <option key={a.id} value={a.id}>{a.libelle}</option>)}
+                </select>
+                <button onClick={() => setCreerNouvelActeur(true)} className="text-xs text-primary hover:underline">+ Créer un nouvel acteur collectif</button>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  placeholder="Libellé *"
+                  value={nouvelActeur.libelle}
+                  onChange={e => setNouvelActeur(p => ({ ...p, libelle: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                />
+                <textarea
+                  placeholder="Description"
+                  value={nouvelActeur.description}
+                  onChange={e => setNouvelActeur(p => ({ ...p, description: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  rows={2}
+                />
+                <button onClick={() => setCreerNouvelActeur(false)} className="text-xs text-slate-500 hover:underline">Choisir un existant</button>
+              </div>
+            )}
+            {wizardError && <p className="text-xs text-red-600">{wizardError}</p>}
+            <div className="flex justify-between">
+              <button onClick={() => { setEtape(1); setWizardError(''); }} className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1"><ArrowLeft size={13} /> Retour</button>
+              <button onClick={goEtape4} className="bg-primary hover:bg-primary/90 text-white px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-1">Suivant <ChevronRight size={14} /></button>
+            </div>
+          </div>
+        )}
+
+        {/* Étape 4 : infos communes */}
+        {etape === 4 && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Rôle <span className="text-red-500">*</span></label>
+              <input
+                list="roles-pp" value={form.role}
+                onChange={e => setForm(p => ({ ...p, role: e.target.value }))}
+                placeholder="Sélectionner ou saisir un rôle"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+              />
+              <datalist id="roles-pp">
+                {ROLES_PARTIE_PRENANTE.map(r => <option key={r} value={r} />)}
+              </datalist>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {(['influence', 'interet'] as const).map(field => (
+                <div key={field}>
+                  <label className="block text-xs font-medium text-slate-600 mb-1 capitalize">{field === 'interet' ? 'Intérêt' : 'Influence'}</label>
+                  <select value={form[field]} onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm">
+                    {NIVEAUX_INFLUENCE_INTERET.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Attentes <span className="text-slate-400 font-normal">(une par ligne, sera stocké sous forme de liste à tirets)</span></label>
+              <textarea
+                value={form.attentesTexte}
+                onChange={e => setForm(p => ({ ...p, attentesTexte: e.target.value }))}
+                placeholder="- Attente 1&#10;- Attente 2"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono"
+                rows={3}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Stratégie de communication</label>
+              <textarea value={form.strategieCommunication} onChange={e => setForm(p => ({ ...p, strategieCommunication: e.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" rows={2} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+              <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" rows={2} />
+            </div>
+            {wizardError && <p className="text-xs text-red-600">{wizardError}</p>}
+            <div className="flex justify-between">
+              <button onClick={() => { setEtape(3); setWizardError(''); }} className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1"><ArrowLeft size={13} /> Retour</button>
+              <button onClick={handleSubmit} disabled={saving} className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-white px-5 py-2 rounded-lg text-sm font-semibold">
+                {saving ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-base font-bold text-primary">Registre des parties prenantes</h2>
+        <button onClick={openWizard} className="flex items-center gap-1.5 bg-secondary hover:bg-secondary/90 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
+          <Plus size={14} /> Ajouter
+        </button>
+      </div>
+
+      {/* Confirmation suppression */}
+      {deleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+            <h3 className="font-bold text-lg text-slate-800 mb-3">Supprimer cette partie prenante ?</h3>
+            <p className="text-sm text-slate-500 mb-4">Cette action est irréversible.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleteId(null)} className="px-4 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 text-slate-700">Annuler</button>
+              <button onClick={() => handleDelete(deleteId)} className="px-4 py-2 rounded-lg text-sm bg-red-600 hover:bg-red-700 text-white font-semibold">Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showWizard && <Wizard />}
+
+      {partiesPrenantes.length === 0 ? (
+        <p className="text-slate-400 text-sm">Aucune partie prenante enregistrée.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide border-b border-slate-100">
+                <th className="text-left py-2.5 px-3 font-semibold">Acteur</th>
+                <th className="text-left py-2.5 px-3 font-semibold">Rôle</th>
+                <th className="text-left py-2.5 px-3 font-semibold">Influence</th>
+                <th className="text-left py-2.5 px-3 font-semibold">Intérêt</th>
+                <th className="py-2.5 px-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {partiesPrenantes.map(pp => (
+                <>
+                  <tr key={pp.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setExpandedId(expandedId === pp.id ? null : pp.id)}>
+                    <td className="py-2.5 px-3">
+                      <p className="font-medium text-slate-800 text-sm">{labelActeur(pp)}</p>
+                      <p className="text-xs text-slate-400">{pp.typeActeur === 'ORGANISATIONNEL' ? 'Organisationnel' : 'Acteur collectif'}</p>
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-600 text-sm">{pp.role}</td>
+                    <td className="py-2.5 px-3">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${BADGE_NIVEAU[pp.influence] ?? ''}`}>{pp.influence}</span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${BADGE_NIVEAU[pp.interet] ?? ''}`}>{pp.interet}</span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <div className="flex gap-1 justify-end" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => { setEditId(pp.id); setEditForm({ role: pp.role, influence: pp.influence, interet: pp.interet, attentesTexte: pp.attentesTexte ?? '', strategieCommunication: pp.strategieCommunication ?? '', notes: pp.notes ?? '' }); }}
+                          className="p-1.5 rounded hover:bg-slate-100 text-slate-400 hover:text-primary"><Pencil size={13} /></button>
+                        <button onClick={() => setDeleteId(pp.id)} className="p-1.5 rounded hover:bg-red-50 text-slate-400 hover:text-red-500"><Trash2 size={13} /></button>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Ligne expandée */}
+                  {expandedId === pp.id && (
+                    <tr key={`${pp.id}-detail`} className="bg-slate-50">
+                      <td colSpan={5} className="px-4 py-3">
+                        {editId === pp.id ? (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-xs font-medium text-slate-600 block mb-1">Rôle</label>
+                                <input list="roles-pp-edit" value={editForm.role} onChange={e => setEditForm(p => ({ ...p, role: e.target.value }))} className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm" />
+                                <datalist id="roles-pp-edit">{ROLES_PARTIE_PRENANTE.map(r => <option key={r} value={r} />)}</datalist>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                {(['influence', 'interet'] as const).map(f => (
+                                  <div key={f}>
+                                    <label className="text-xs font-medium text-slate-600 block mb-1 capitalize">{f === 'interet' ? 'Intérêt' : 'Influence'}</label>
+                                    <select value={editForm[f]} onChange={e => setEditForm(p => ({ ...p, [f]: e.target.value }))} className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm">
+                                      {NIVEAUX_INFLUENCE_INTERET.map(n => <option key={n} value={n}>{n}</option>)}
+                                    </select>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-slate-600 block mb-1">Attentes</label>
+                              <textarea value={editForm.attentesTexte} onChange={e => setEditForm(p => ({ ...p, attentesTexte: e.target.value }))} className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-mono" rows={3} />
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-slate-600 block mb-1">Stratégie de communication</label>
+                              <textarea value={editForm.strategieCommunication} onChange={e => setEditForm(p => ({ ...p, strategieCommunication: e.target.value }))} className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm" rows={2} />
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium text-slate-600 block mb-1">Notes</label>
+                              <textarea value={editForm.notes} onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))} className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm" rows={2} />
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => handleEdit(pp.id)} disabled={editSaving} className="flex items-center gap-1 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-lg text-xs font-semibold">
+                                <Check size={12} /> {editSaving ? 'Enreg…' : 'Enregistrer'}
+                              </button>
+                              <button onClick={() => setEditId(null)} className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs"><X size={12} /> Annuler</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            {pp.attentesTexte && (
+                              <div>
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Attentes</p>
+                                <ul className="space-y-0.5">
+                                  {pp.attentesTexte.split('\n').filter(Boolean).map((ligne, i) => (
+                                    <li key={i} className="text-slate-700 text-xs">{ligne.startsWith('-') ? ligne : `- ${ligne}`}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {pp.strategieCommunication && (
+                              <div>
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Stratégie com.</p>
+                                <p className="text-xs text-slate-700 whitespace-pre-line">{pp.strategieCommunication}</p>
+                              </div>
+                            )}
+                            {pp.notes && (
+                              <div>
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Notes</p>
+                                <p className="text-xs text-slate-700 whitespace-pre-line">{pp.notes}</p>
+                              </div>
+                            )}
+                            {!pp.attentesTexte && !pp.strategieCommunication && !pp.notes && (
+                              <p className="text-xs text-slate-400 col-span-3">Aucun détail renseigné.</p>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function ProjetDetailPage() {
   const params = useParams();
@@ -454,21 +921,26 @@ export default function ProjetDetailPage() {
   const projectId = params.id as string;
 
   const [projet, setProjet] = useState<Projet | null>(null);
+  const [session, setSession] = useState<{ role: string; estSuperAdmin: boolean; personne?: { id: string } | null } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [showOperationInduite, setShowOperationInduite] = useState(false);
+  const [opInduiteForm, setOpInduiteForm] = useState({ libelle: '', description: '', dateDebut: '', entiteId: '', responsableId: '' });
+  const [opInduiteError, setOpInduiteError] = useState('');
+  const [opInduiteSaving, setOpInduiteSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [ressources, setRessources] = useState<Personne[]>([]);
+  const [toutesEntites, setToutesEntites] = useState<{ id: string; libelle: string; typeEntite?: string | null }[]>([]);
   const [showAddEquipe, setShowAddEquipe] = useState(false);
   const [addingEquipeIds, setAddingEquipeIds] = useState<string[]>([]);
   const [removingMembreId, setRemovingMembreId] = useState<string|null>(null);
   const [removingMembreLoading, setRemovingMembreLoading] = useState(false);
 
   useEffect(() => {
-    // Charger toutes les personnes ressources pour la liste chef de projet
-    fetch('/api/personnes')
-      .then(r => r.json())
-      .then(data => setRessources(Array.isArray(data) ? data : []));
+    fetch('/api/personnes').then(r => r.json()).then(d => setRessources(Array.isArray(d) ? d : []));
+    fetch('/api/entites').then(r => r.json()).then(d => setToutesEntites(Array.isArray(d) ? d : []));
+    fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(d => { if (d) setSession(d); }).catch(() => {});
   }, []);
   const [activeTab, setActiveTab] = useState<TabKey>('infos');
 
@@ -510,6 +982,14 @@ export default function ProjetDetailPage() {
   const [deleteTaskConfirm, setDeleteTaskConfirm] = useState(false);
   const [deleteTaskLoading, setDeleteTaskLoading] = useState(false);
   const [deleteTaskError, setDeleteTaskError] = useState('');
+
+  // Sous-tâches (checklist)
+  const [sousTaches, setSousTaches] = useState<{ id: string; libelle: string; estFaite: boolean; ordre: number }[]>([]);
+  const [stLoading, setStLoading] = useState(false);
+  const [stNewLibelle, setStNewLibelle] = useState('');
+  const [stAdding, setStAdding] = useState(false);
+  const [stEditId, setStEditId] = useState<string | null>(null);
+  const [stEditLibelle, setStEditLibelle] = useState('');
 
   // ── Filtres liste des tâches ─────────────────────────────────────────────
   const [flTache,      setFlTache]      = useState('');
@@ -626,6 +1106,62 @@ export default function ProjetDetailPage() {
     }
   };
 
+  const fetchSousTaches = async (taskId: string) => {
+    setStLoading(true);
+    try {
+      const res = await fetch(`/api/taches/${taskId}/sous-taches`);
+      const data = await res.json();
+      setSousTaches(Array.isArray(data) ? data : []);
+    } catch { /* silently */ }
+    finally { setStLoading(false); }
+  };
+
+  const handleStToggle = async (st: { id: string; estFaite: boolean }) => {
+    if (!selectedTaskId) return;
+    // Optimistic
+    setSousTaches(prev => prev.map(s => s.id === st.id ? { ...s, estFaite: !s.estFaite } : s));
+    await fetch(`/api/taches/${selectedTaskId}/sous-taches/${st.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ estFaite: !st.estFaite }),
+    });
+  };
+
+  const handleStAdd = async () => {
+    if (!selectedTaskId || !stNewLibelle.trim()) return;
+    setStAdding(true);
+    try {
+      const res = await fetch(`/api/taches/${selectedTaskId}/sous-taches`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ libelle: stNewLibelle.trim() }),
+      });
+      if (res.ok) {
+        setStNewLibelle('');
+        await fetchSousTaches(selectedTaskId);
+      }
+    } catch { /* silently */ }
+    finally { setStAdding(false); }
+  };
+
+  const handleStDelete = async (stId: string) => {
+    if (!selectedTaskId) return;
+    setSousTaches(prev => prev.filter(s => s.id !== stId));
+    await fetch(`/api/taches/${selectedTaskId}/sous-taches/${stId}`, { method: 'DELETE' });
+  };
+
+  const handleStEditSave = async () => {
+    if (!selectedTaskId || !stEditId || !stEditLibelle.trim()) return;
+    setSousTaches(prev => prev.map(s => s.id === stEditId ? { ...s, libelle: stEditLibelle.trim() } : s));
+    await fetch(`/api/taches/${selectedTaskId}/sous-taches/${stEditId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ libelle: stEditLibelle.trim() }),
+    });
+    setStEditId(null);
+    setStEditLibelle('');
+  };
+
   const openDetail = (task: Tache) => {
     setSelectedTaskId(task.id);
     syncDetailEdit(task);
@@ -635,9 +1171,13 @@ export default function ProjetDetailPage() {
     setReplyText('');
     setCommentaires([]);
     setActivites([]);
+    setSousTaches([]);
+    setStNewLibelle('');
+    setStEditId(null);
     setActiveTab('detail');
     fetchCommentaires(task.id);
     fetchActivites(task.id);
+    fetchSousTaches(task.id);
   };
 
   const handleDetailSave = async () => {
@@ -739,6 +1279,8 @@ export default function ProjetDetailPage() {
   };
 
   const moveTask = async (taskId: string, newStatut: string) => {
+    // Bloquer le déplacement vers "Validé" pour les non-GESTIONNAIRE
+    if (newStatut === 'Validé' && !canValider) return;
     const task = projet?.taches.find(t => t.id === taskId);
     if (task && !getAllowedNextStatuts(task).includes(newStatut)) return;
     setMovingTaskId(taskId);
@@ -785,6 +1327,10 @@ export default function ProjetDetailPage() {
     return t.statut === col;
   });
 
+  // Peut valider (déplacer vers "Validé") : GESTIONNAIRE+
+  const ROLES_VALIDEUR = ['GESTIONNAIRE', 'COORDINATEUR', 'ADMINISTRATEUR'];
+  const canValider = session?.estSuperAdmin || (session !== null && ROLES_VALIDEUR.includes(session.role));
+
   const selectedTask = selectedTaskId ? taches.find(t => t.id === selectedTaskId) ?? null : null;
   const selectedAvancement = selectedTask ? getAvancement(selectedTask) : null;
   const projFinPrev = projet.dateFinPrevisionnelle ? toInputDate(projet.dateFinPrevisionnelle) : '';
@@ -806,6 +1352,12 @@ export default function ProjetDetailPage() {
           {/* Infos projet */}
           <div className="min-w-0 flex-1">
             <h1 className="text-3xl font-bold text-primary">{projet.libelle}</h1>
+            {projet.entitePorteuse && (
+              <p className="mt-1 flex items-center gap-1.5 text-slate-500 text-sm font-medium">
+                <Building2 size={13} className="flex-shrink-0" />
+                {projet.entitePorteuse.typeEntite ? `[${projet.entitePorteuse.typeEntite}] ` : ''}{projet.entitePorteuse.libelle}
+              </p>
+            )}
             {projet.description && (
               <p className="mt-1 text-slate-500 text-sm">{projet.description}</p>
             )}
@@ -944,6 +1496,7 @@ export default function ProjetDetailPage() {
                       description: detailEdit.description,
                       statut: detailEdit.statut,
                       chefProjetId: detailEdit.chefProjetId,
+                      entiteId: detailEdit.entiteId !== undefined ? (detailEdit.entiteId || null) : undefined,
                       dateDebutPrevisionnelle: detailEdit.dateDebutPrevisionnelle ?? toInputDate(projet.dateDebutPrevisionnelle),
                       dateFinPrevisionnelle: detailEdit.dateFinPrevisionnelle ?? toInputDate(projet.dateFinPrevisionnelle),
                       dateDebutEffective: detailEdit.dateDebutEffective ?? toInputDate(projet.dateDebutEffective),
@@ -1006,6 +1559,21 @@ export default function ProjetDetailPage() {
                   <option value="">— Sélectionner —</option>
                   {ressources.map(m => (
                     <option key={m.id} value={m.id}>{m.prenoms} {m.nom} ({m.fonction})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Entité porteuse (Owner)</label>
+                <select
+                  value={detailEdit.entiteId ?? projet.entitePorteuse?.id ?? ''}
+                  onChange={e => setDetailEdit((d: any) => ({ ...d, entiteId: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                >
+                  <option value="">— Aucune —</option>
+                  {toutesEntites.map(e => (
+                    <option key={e.id} value={e.id}>
+                      {e.typeEntite ? `[${e.typeEntite}] ` : ''}{e.libelle}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -1217,39 +1785,115 @@ export default function ProjetDetailPage() {
           </section>
 
           {/* Registre parties prenantes */}
-          <section className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-            <h2 className="text-base font-bold text-primary mb-4">Registre des parties prenantes</h2>
-            {projet.partiesPrenantes.length === 0 ? (
-              <p className="text-slate-400 text-sm">Aucune partie prenante enregistrée</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wide border-b border-slate-100">
-                      <th className="text-left py-2.5 px-4 font-semibold">Libellé</th>
-                      <th className="text-left py-2.5 px-4 font-semibold">Type</th>
-                      <th className="text-left py-2.5 px-4 font-semibold">Entité</th>
-                      <th className="text-left py-2.5 px-4 font-semibold">Responsable</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {projet.partiesPrenantes.map(pp => (
-                      <tr key={pp.id} className="hover:bg-slate-50">
-                        <td className="py-2.5 px-4 font-medium text-slate-800">{pp.partiePrenante.libelle}</td>
-                        <td className="py-2.5 px-4 text-slate-600">{pp.partiePrenante.type}</td>
-                        <td className="py-2.5 px-4 text-slate-500">{pp.partiePrenante.entite?.libelle ?? '—'}</td>
-                        <td className="py-2.5 px-4 text-slate-500">
-                          {pp.partiePrenante.responsable
-                            ? `${pp.partiePrenante.responsable.prenoms} ${pp.partiePrenante.responsable.nom}`
-                            : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <RegistrePartiesPrenantes
+            projetId={projectId}
+            partiesPrenantes={projet.partiesPrenantes}
+            ressources={ressources}
+            onRefresh={fetchProjet}
+          />
+
+          {/* Opération induite — visible uniquement si projet Terminé ou Clôturé */}
+          {(projet.statut === 'Terminé' || projet.statut === 'Clôturé') && (
+            <section className="bg-white rounded-2xl shadow-sm border border-secondary/30 p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-bold text-secondary mb-1">Opérations induites</h2>
+                  <p className="text-sm text-slate-500">Ce projet est terminé. Vous pouvez créer une opération permanente induite par ce projet (ex : maintenance, suivi récurrent).</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpInduiteForm({ libelle: `Opération — ${projet.libelle}`, description: '', dateDebut: new Date().toISOString().slice(0, 10), entiteId: projet.entitePorteuse?.id ?? '', responsableId: projet.chefProjet?.id ?? '' });
+                    setShowOperationInduite(true);
+                  }}
+                  className="flex-shrink-0 flex items-center gap-2 bg-secondary hover:bg-secondary/90 text-white px-4 py-2 rounded-lg text-sm font-semibold"
+                >
+                  <Plus size={14} /> Créer une opération induite
+                </button>
               </div>
-            )}
-          </section>
+
+              {showOperationInduite && (
+                <form
+                  className="mt-4 border-t border-slate-100 pt-4 space-y-3"
+                  onSubmit={async e => {
+                    e.preventDefault();
+                    setOpInduiteError('');
+                    if (!opInduiteForm.entiteId && !opInduiteForm.responsableId) {
+                      setOpInduiteError('Une entité ou un responsable est obligatoire.');
+                      return;
+                    }
+                    setOpInduiteSaving(true);
+                    try {
+                      const res = await fetch('/api/operations', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          libelle:        opInduiteForm.libelle,
+                          description:    opInduiteForm.description || null,
+                          statut:         'Active',
+                          entiteId:       opInduiteForm.entiteId      || null,
+                          responsableId:  opInduiteForm.responsableId || null,
+                          projetSourceId: projet.id,
+                          dateDebut:      opInduiteForm.dateDebut,
+                        }),
+                      });
+                      if (!res.ok) {
+                        const d = await res.json();
+                        setOpInduiteError(d?.error || 'Erreur lors de la création.');
+                      } else {
+                        const op = await res.json();
+                        setShowOperationInduite(false);
+                        router.push(`/operations/${op.id}`);
+                      }
+                    } finally { setOpInduiteSaving(false); }
+                  }}
+                >
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Libellé *</label>
+                      <input required className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        value={opInduiteForm.libelle} onChange={e => setOpInduiteForm({ ...opInduiteForm, libelle: e.target.value })} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                      <textarea rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        value={opInduiteForm.description} onChange={e => setOpInduiteForm({ ...opInduiteForm, description: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Entité responsable</label>
+                      <select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        value={opInduiteForm.entiteId} onChange={e => setOpInduiteForm({ ...opInduiteForm, entiteId: e.target.value })}>
+                        <option value="">— Aucune —</option>
+                        {toutesEntites.map(en => <option key={en.id} value={en.id}>{en.typeEntite ? `[${en.typeEntite}] ` : ''}{en.libelle}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Responsable direct</label>
+                      <select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        value={opInduiteForm.responsableId} onChange={e => setOpInduiteForm({ ...opInduiteForm, responsableId: e.target.value })}>
+                        <option value="">— Aucun —</option>
+                        {ressources.map(p => <option key={p.id} value={p.id}>{p.nom} {p.prenoms}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Date de début *</label>
+                      <input required type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        value={opInduiteForm.dateDebut} onChange={e => setOpInduiteForm({ ...opInduiteForm, dateDebut: e.target.value })} />
+                    </div>
+                  </div>
+                  {opInduiteError && <p className="text-sm text-red-600">{opInduiteError}</p>}
+                  <div className="flex gap-2">
+                    <button type="submit" disabled={opInduiteSaving}
+                      className="bg-secondary text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50">
+                      {opInduiteSaving ? 'Création…' : 'Créer et ouvrir'}
+                    </button>
+                    <button type="button" onClick={() => setShowOperationInduite(false)}
+                      className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm">Annuler</button>
+                  </div>
+                </form>
+              )}
+            </section>
+          )}
 
           {/* Zone dangereuse */}
           <section className="bg-white rounded-2xl shadow-sm border border-red-200 p-6">
@@ -1616,15 +2260,23 @@ export default function ProjetDetailPage() {
                 const cfg = KANBAN_CONFIG[col];
                 const tasks = tasksByColumn(col);
                 const isOver = dropTargetCol === col;
+                // La colonne "Validé" est visible mais les drops y sont bloqués pour les non-GESTIONNAIRE
+                const isValidéCol = col === 'Validé';
+                const dropLocked = isValidéCol && !canValider;
                 return (
                   <div
                     key={col}
-                    className={`min-w-0 bg-white rounded-2xl border border-slate-200 border-t-4 ${cfg.borderColor} shadow-sm flex flex-col`}
-                    onDragOver={e => { e.preventDefault(); setDropTargetCol(col); }}
+                    className={`min-w-0 bg-white rounded-2xl border border-slate-200 border-t-4 ${cfg.borderColor} shadow-sm flex flex-col ${dropLocked ? 'opacity-90' : ''}`}
+                    onDragOver={e => {
+                      if (dropLocked) return; // bloquer le drop
+                      e.preventDefault();
+                      setDropTargetCol(col);
+                    }}
                     onDragLeave={e => {
                       if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropTargetCol(null);
                     }}
                     onDrop={e => {
+                      if (dropLocked) return; // bloquer le drop
                       e.preventDefault();
                       if (draggedTaskId) moveTask(draggedTaskId, col);
                       setDraggedTaskId(null);
@@ -1632,7 +2284,12 @@ export default function ProjetDetailPage() {
                     }}
                   >
                     <div className={`px-4 py-3 rounded-t-xl flex items-center justify-between ${cfg.headerClass}`}>
-                      <h3 className="font-semibold text-sm">{cfg.label}</h3>
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="font-semibold text-sm">{cfg.label}</h3>
+                        {dropLocked && (
+                          <Lock size={11} className="opacity-60" title="Validation réservée aux Gestionnaires et Coordinateurs" />
+                        )}
+                      </div>
                       <span className="text-xs font-bold bg-white/60 px-2 py-0.5 rounded-full">{tasks.length}</span>
                     </div>
                     <div
@@ -1874,6 +2531,102 @@ export default function ProjetDetailPage() {
                       <label className="block text-xs text-slate-400 mb-1">Fin</label>
                       <div className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm text-slate-700">{fmtDate(selectedTask.dateFinEffective)}</div>
                     </div>
+                  </div>
+                </div>
+
+                {/* ── Checklist sous-tâches ─────────────────────────── */}
+                <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <ListChecks size={13} />
+                      Sous-tâches
+                      {sousTaches.length > 0 && (
+                        <span className="text-slate-400 font-normal">
+                          {sousTaches.filter(s => s.estFaite).length}/{sousTaches.length}
+                        </span>
+                      )}
+                    </h4>
+                  </div>
+
+                  {/* Barre de progression */}
+                  {sousTaches.length > 0 && (
+                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.round((sousTaches.filter(s => s.estFaite).length / sousTaches.length) * 100)}%` }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Liste */}
+                  {stLoading ? (
+                    <p className="text-xs text-slate-400">Chargement…</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {sousTaches.map(st => (
+                        <div key={st.id} className="flex items-center gap-2 group">
+                          <input
+                            type="checkbox"
+                            checked={st.estFaite}
+                            onChange={() => handleStToggle(st)}
+                            className="h-3.5 w-3.5 accent-emerald-600 flex-shrink-0"
+                          />
+                          {stEditId === st.id ? (
+                            <div className="flex flex-1 items-center gap-1 min-w-0">
+                              <input
+                                type="text"
+                                value={stEditLibelle}
+                                onChange={e => setStEditLibelle(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') handleStEditSave(); if (e.key === 'Escape') { setStEditId(null); } }}
+                                autoFocus
+                                className="flex-1 px-2 py-0.5 border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/40 min-w-0"
+                              />
+                              <button onClick={handleStEditSave} className="p-1 rounded hover:bg-emerald-50 text-emerald-600"><Check size={11} /></button>
+                              <button onClick={() => setStEditId(null)} className="p-1 rounded hover:bg-slate-100 text-slate-400"><X size={11} /></button>
+                            </div>
+                          ) : (
+                            <>
+                              <span
+                                onDoubleClick={() => { setStEditId(st.id); setStEditLibelle(st.libelle); }}
+                                className={`flex-1 text-xs cursor-default select-none ${st.estFaite ? 'line-through text-slate-400' : 'text-slate-700'}`}
+                                title="Double-cliquer pour modifier"
+                              >
+                                {st.libelle}
+                              </span>
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                <button
+                                  onClick={() => { setStEditId(st.id); setStEditLibelle(st.libelle); }}
+                                  className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-primary"
+                                ><Pencil size={10} /></button>
+                                <button
+                                  onClick={() => handleStDelete(st.id)}
+                                  className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500"
+                                ><Trash2 size={10} /></button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Ajouter */}
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="text"
+                      value={stNewLibelle}
+                      onChange={e => setStNewLibelle(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleStAdd(); }}
+                      placeholder="Ajouter une sous-tâche…"
+                      className="flex-1 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    />
+                    <button
+                      onClick={handleStAdd}
+                      disabled={stAdding || !stNewLibelle.trim()}
+                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-primary hover:text-white disabled:opacity-40 transition text-slate-600"
+                    >
+                      <Plus size={13} />
+                    </button>
                   </div>
                 </div>
 

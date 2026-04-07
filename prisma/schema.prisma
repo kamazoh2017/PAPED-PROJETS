@@ -26,35 +26,44 @@ model Projet {
   tauxAvancementAttendu   Float     @default(0)
   tauxAchevementReel      Float     @default(0)
   tauxAchevementAttendu   Float     @default(0)
+  entiteId                String?   // Entité porteuse / owner du projet
 
   creePar    String?
   creeLe     DateTime?
   modifiePar String?
   modifieLe  DateTime?
 
+  entitePorteuse  Entite?           @relation("ProjetPorteur", fields: [entiteId], references: [id], onDelete: SetNull)
   chefProjet      PersonneRessource @relation("ProjetChef", fields: [chefProjetId], references: [id])
   equipeProjet    PersonneRessource[] @relation("EquipeProjet")
   taches           Tache[]
-  partiesPrenantes PartiePrenanteProjets[]
+  partiesPrenantes PartiePrenante[]
   risques          RisqueProjet[]
   activitesTaches  ActiviteTache[]
+  operationsInduites Operation[]    @relation("OperationProjetSource")
 
   @@map("projets")
 }
 
 model Entite {
-  id      String   @id @default(cuid())
-  libelle String   @unique
-  tutelle String?
+  id         String   @id @default(cuid())
+  libelle    String   @unique
+  tutelle    String?
+  typeEntite String?
+  parentId   String?
 
   creePar    String?
   creeLe     DateTime?
   modifiePar String?
   modifieLe  DateTime?
 
-  personnesRessources   PersonneRessource[]
-  partiesPrenantes      PartiePrenante[]
-  tachesPeriodiqueExec  TachePerodique[]    @relation("TachePeriodiqueExecutant")
+  parent              Entite?             @relation("HierarchieEntite", fields: [parentId], references: [id], onDelete: SetNull)
+  enfants             Entite[]            @relation("HierarchieEntite")
+  personnesRessources PersonneRessource[]
+  tachesPeriodiqueExec TachePerodique[]   @relation("TachePeriodiqueExecutant")
+  projetsPortes        Projet[]            @relation("ProjetPorteur")
+  operations           Operation[]         @relation("OperationEntite")
+  tachesOp             TacheOperationnelle[] @relation("TacheOpEntite")
 
   @@map("entites")
 }
@@ -79,8 +88,11 @@ model PersonneRessource {
   projetsChef             Projet[]                @relation("ProjetChef")
   equipeProjet            Projet[]                @relation("EquipeProjet")
   tachesAssignees         Tache[]                 @relation("TacheAssignee")
-  partiesPrenantes        PartiePrenante[]
+  partiesPrenantes        PartiePrenante[]        @relation("PPRessource")
   tachesPeriodiqueResp    TachePerodique[]        @relation("TachePeriodiqueResponsable")
+  operationsResponsable   Operation[]             @relation("OperationResponsable")
+  tachesOpResponsable     TacheOperationnelle[]   @relation("TacheOpResponsable")
+  occurrencesRealisees    OccurrenceTache[]       @relation("OccurrenceRealisePar")
   compteAcces             CompteAcces?
 
   @@map("personnes_ressources")
@@ -90,6 +102,7 @@ model CompteAcces {
   id                 String                 @id @default(cuid())
   login              String?                @unique
   estSuperAdmin      Boolean                @default(false)
+  role               String                 @default("AGENT")  // AGENT | GESTIONNAIRE | COORDINATEUR | ADMINISTRATEUR
   personneId         String?                @unique
   motDePasseHash     String
   estActif           Boolean                @default(true)
@@ -105,8 +118,9 @@ model CompteAcces {
   personne           PersonneRessource?      @relation(fields: [personneId], references: [id], onDelete: Cascade)
   permissions        PermissionPageAction[]
   sessions           SessionAuth[]
-  commentairesTaches CommentaireTache[]
-  activitesTaches    ActiviteTache[]
+  commentairesTaches     CommentaireTache[]
+  activitesTaches        ActiviteTache[]
+  commentairesOccurrences CommentaireOccurrence[]
 
   @@map("comptes_acces")
 }
@@ -147,39 +161,44 @@ model SessionAuth {
   @@map("sessions_auth")
 }
 
-model PartiePrenante {
-  id            String  @id @default(cuid())
-  libelle       String
-  type          String
-  entiteId      String?
-  responsableId String?
+model ActeurCollectif {
+  id          String  @id @default(cuid())
+  libelle     String  @unique
+  description String?
 
   creePar    String?
   creeLe     DateTime?
   modifiePar String?
   modifieLe  DateTime?
 
-  entite       Entite?             @relation(fields: [entiteId], references: [id], onDelete: SetNull)
-  responsable  PersonneRessource?  @relation(fields: [responsableId], references: [id], onDelete: SetNull)
-  projetChamps PartiePrenanteProjets[]
+  partiesPrenantes PartiePrenante[]
 
-  @@map("parties_prenantes")
+  @@map("acteurs_collectifs")
 }
 
-model PartiePrenanteProjets {
-  id             String @id @default(cuid())
-  projetId       String
-  partiePrenantId String
+model PartiePrenante {
+  id                     String  @id @default(cuid())
+  projetId               String
+  typeActeur             String  // "ORGANISATIONNEL" | "ACTEUR_COLLECTIF_NON_ORGANISATIONNEL"
+  ressourceId            String? // requis si ORGANISATIONNEL — pointe vers PersonneRessource (qui a son entiteId)
+  acteurCollectifId      String? // requis si ACTEUR_COLLECTIF_NON_ORGANISATIONNEL
+  role                   String
+  influence              String  @default("Moyen") // Faible | Moyen | Élevé | Critique
+  interet                String  @default("Moyen") // Faible | Moyen | Élevé | Critique
+  attentesTexte          String? // texte libre, liste à tirets
+  strategieCommunication String?
+  notes                  String?
 
   creePar    String?
   creeLe     DateTime?
   modifiePar String?
   modifieLe  DateTime?
 
-  projet         Projet         @relation(fields: [projetId], references: [id], onDelete: Cascade)
-  partiePrenante PartiePrenante @relation(fields: [partiePrenantId], references: [id], onDelete: Cascade)
+  projet          Projet             @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  ressource       PersonneRessource? @relation("PPRessource", fields: [ressourceId], references: [id], onDelete: SetNull)
+  acteurCollectif ActeurCollectif?   @relation(fields: [acteurCollectifId], references: [id], onDelete: SetNull)
 
-  @@map("parties_prenantes_projets")
+  @@map("parties_prenantes")
 }
 
 model Tache {
@@ -210,8 +229,22 @@ model Tache {
   assigneA     PersonneRessource?  @relation("TacheAssignee", fields: [assigneAId], references: [id], onDelete: SetNull)
   commentaires    CommentaireTache[]
   activites       ActiviteTache[]
+  sousTaches      SousTache[]
 
   @@map("taches")
+}
+
+model SousTache {
+  id           String   @id @default(cuid())
+  tacheId      String
+  libelle      String
+  estFaite     Boolean  @default(false)
+  ordre        Int      @default(0)
+  dateCreation DateTime @default(now())
+
+  tache Tache @relation(fields: [tacheId], references: [id], onDelete: Cascade)
+
+  @@map("sous_taches")
 }
 
 model CommentaireTache {
@@ -297,6 +330,108 @@ model TachePerodique {
 
   @@map("taches_periodiques")
 }
+
+// ─────────────────────────────────────────────
+// MODULE OPÉRATIONS
+// ─────────────────────────────────────────────
+
+model Operation {
+  id             String    @id @default(cuid())
+  libelle        String
+  description    String?
+  statut         String    @default("Active") // "Active" | "Suspendue" | "Archivée"
+  entiteId       String?   // OrgUnit responsable (optionnel si responsableId fourni)
+  responsableId  String?   // Point focal direct (optionnel si entiteId fourni)
+  projetSourceId String?   // Projet qui a induit cette opération
+  dateDebut      DateTime
+  dateFin        DateTime? // null = permanente
+
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
+  entite       Entite?            @relation("OperationEntite", fields: [entiteId], references: [id], onDelete: SetNull)
+  responsable  PersonneRessource? @relation("OperationResponsable", fields: [responsableId], references: [id], onDelete: SetNull)
+  projetSource Projet?            @relation("OperationProjetSource", fields: [projetSourceId], references: [id], onDelete: SetNull)
+  taches       TacheOperationnelle[]
+
+  @@map("operations")
+}
+
+model TacheOperationnelle {
+  id                String    @id @default(cuid())
+  operationId       String
+  libelle           String
+  description       String?
+  periodicite       String    // "QUOTIDIENNE" | "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "AD_HOC"
+  configPeriodicite String?   // JSON selon la périodicité : {"jourDuMois":1} {"jourDeLaSemaine":"LUNDI"} etc.
+  delaiExecution    Int       @default(3)  // nb jours entre datePrevue et dateEcheance
+  priorite          String    @default("Normale") // "Critique" | "Haute" | "Normale" | "Basse"
+  responsableId     String?   // PersonneRessource exécutante par défaut
+  entiteId          String?   // Entité exécutante (si différente de l'opération parente)
+  estActif          Boolean   @default(true)
+  dateDebut         DateTime  // début de génération des occurrences
+  dateFin           DateTime? // fin de génération (null = indéfini)
+
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
+  operation   Operation          @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  responsable PersonneRessource? @relation("TacheOpResponsable", fields: [responsableId], references: [id], onDelete: SetNull)
+  entite      Entite?            @relation("TacheOpEntite", fields: [entiteId], references: [id], onDelete: SetNull)
+  occurrences OccurrenceTache[]
+
+  @@map("taches_operationnelles")
+}
+
+model OccurrenceTache {
+  id                    String    @id @default(cuid())
+  tacheOperationnelleId String
+  datePrevue            DateTime  // date de déclenchement calculée
+  dateEcheance          DateTime  // datePrevue + delaiExecution
+  dateRealisation       DateTime?
+  statut                String    @default("En attente") // "En attente" | "En cours" | "Réalisée" | "En retard" | "Réalisée en retard" | "Annulée"
+  realiseParId          String?
+  commentaire           String?   // commentaire de clôture ou d'annulation
+  retardJours           Int?      // calculé à la clôture si en retard
+
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
+  tacheOperationnelle TacheOperationnelle   @relation(fields: [tacheOperationnelleId], references: [id], onDelete: Cascade)
+  realisePar          PersonneRessource?    @relation("OccurrenceRealisePar", fields: [realiseParId], references: [id], onDelete: SetNull)
+  commentaires        CommentaireOccurrence[]
+
+  @@map("occurrences_taches")
+}
+
+model CommentaireOccurrence {
+  id            String   @id @default(cuid())
+  occurrenceId  String
+  compteAccesId String
+  contenu       String
+  dateCreation  DateTime @default(now())
+  parentId      String?
+
+  creePar    String?
+  creeLe     DateTime?
+  modifiePar String?
+  modifieLe  DateTime?
+
+  occurrence  OccurrenceTache            @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  compteAcces CompteAcces                @relation(fields: [compteAccesId], references: [id], onDelete: Cascade)
+  parent      CommentaireOccurrence?     @relation("RepliesOccurrence", fields: [parentId], references: [id], onDelete: SetNull)
+  reponses    CommentaireOccurrence[]    @relation("RepliesOccurrence")
+
+  @@map("commentaires_occurrences")
+}
+
+// ─────────────────────────────────────────────
 
 model HistoriqueModification {
   id               String   @id @default(cuid())
