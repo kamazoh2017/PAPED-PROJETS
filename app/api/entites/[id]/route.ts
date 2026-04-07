@@ -1,8 +1,15 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
+import { requireAuth, canDo, forbidden, hasRoleAtLeast } from '@/lib/require-auth';
 
 type Params = { params: Promise<{ id: string }> };
+
+/** Vérifie si l'utilisateur est chef d'au moins un projet (pour AGENT). */
+async function isChefDeAuMoinsUnProjet(personneId: string | null | undefined): Promise<boolean> {
+  if (!personneId) return false;
+  const count = await prisma.projet.count({ where: { chefProjetId: personneId } });
+  return count > 0;
+}
 
 export async function GET(request: NextRequest, { params }: Params) {
   const { user, err } = await requireAuth(request);
@@ -13,7 +20,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     const { id } = await params;
     const entite = await prisma.entite.findUnique({
       where: { id },
-      include: { personnesRessources: true, partiesPrenantes: true },
+      include: { personnesRessources: true, parent: true, enfants: true },
     });
     if (!entite) return NextResponse.json({ error: 'Entité introuvable.' }, { status: 404 });
     return NextResponse.json(entite);
@@ -25,15 +32,19 @@ export async function GET(request: NextRequest, { params }: Params) {
 export async function PUT(request: NextRequest, { params }: Params) {
   const { user, err } = await requireAuth(request);
   if (err) return err;
-  if (!canDo(user, 'entites', 'update')) return forbidden();
+
+  // GESTIONNAIRE+ (statique) OU agent chef d'au moins un projet (contextuel)
+  if (!hasRoleAtLeast(user, 'GESTIONNAIRE')) {
+    const estChef = await isChefDeAuMoinsUnProjet(user.personne?.id);
+    if (!estChef) return forbidden();
+  }
 
   try {
     const { id } = await params;
     const body = await request.json();
     const libelle = String(body.libelle || '').trim();
-    if (!libelle) {
-      return NextResponse.json({ error: 'Le libellé est obligatoire.' }, { status: 400 });
-    }
+    if (!libelle) return NextResponse.json({ error: 'Le libellé est obligatoire.' }, { status: 400 });
+
     const conflict = await prisma.entite.findFirst({
       where: { id: { not: id }, libelle },
       select: { id: true },
@@ -41,10 +52,19 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (conflict) {
       return NextResponse.json({ error: 'Une entité avec ce libellé existe déjà.' }, { status: 409 });
     }
+    if (body.parentId && body.parentId === id) {
+      return NextResponse.json({ error: 'Une entité ne peut pas être son propre parent.' }, { status: 400 });
+    }
+
     const entite = await prisma.entite.update({
       where: { id },
-      data: { libelle, tutelle: body.tutelle ? String(body.tutelle).trim() : null },
-      include: { personnesRessources: true, partiesPrenantes: true },
+      data: {
+        libelle,
+        tutelle:    body.tutelle    ? String(body.tutelle).trim() : null,
+        typeEntite: body.typeEntite !== undefined ? (body.typeEntite ? String(body.typeEntite).trim() : null) : undefined,
+        parentId:   body.parentId   !== undefined ? (body.parentId || null) : undefined,
+      },
+      include: { personnesRessources: true, parent: true },
     });
     return NextResponse.json(entite);
   } catch {
@@ -55,7 +75,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
 export async function DELETE(request: NextRequest, { params }: Params) {
   const { user, err } = await requireAuth(request);
   if (err) return err;
-  if (!canDo(user, 'entites', 'delete')) return forbidden();
+
+  // GESTIONNAIRE+ (statique) OU agent chef d'au moins un projet (contextuel)
+  if (!hasRoleAtLeast(user, 'GESTIONNAIRE')) {
+    const estChef = await isChefDeAuMoinsUnProjet(user.personne?.id);
+    if (!estChef) return forbidden();
+  }
 
   try {
     const { id } = await params;

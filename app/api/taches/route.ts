@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
+import { requireAuth, canDo, forbidden, canManageTaches } from '@/lib/require-auth';
 import { refreshProjectMetrics } from '@/lib/refresh-project-metrics';
 import { getTaskProgression, getPriorityWeight } from '@/lib/project-metrics';
 
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       orderBy: { dateCreation: 'desc' },
     });
     return NextResponse.json(taches);
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Erreur lors de la récupération des tâches' }, { status: 500 });
   }
 }
@@ -40,7 +40,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { user, err } = await requireAuth(request);
   if (err) return err;
-  if (!canDo(user, 'detail-projet', 'create-tache')) return forbidden();
 
   try {
     const body = await request.json();
@@ -56,10 +55,12 @@ export async function POST(request: NextRequest) {
       where: { id: body.projetId },
       include: { equipeProjet: true },
     });
-
     if (!projet) {
       return NextResponse.json({ error: 'Projet introuvable.' }, { status: 400 });
     }
+
+    // COORDINATEUR+ (permission statique) OU chef de projet (contextuel)
+    if (!canManageTaches(user, projet.chefProjetId)) return forbidden();
 
     const assigneAId = body.assigneAId || null;
     if (assigneAId) {
@@ -67,18 +68,13 @@ export async function POST(request: NextRequest) {
         where: { id: assigneAId },
         select: { id: true },
       });
-
       if (!personne) {
-        return NextResponse.json(
-          { error: 'La personne assignee est introuvable.' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: 'La personne assignée est introuvable.' }, { status: 400 });
       }
     }
 
     const dateDebut = toOptionalDate(body.dateDebutPrevisionnelle);
     const dateFin = toOptionalDate(body.dateFinPrevisionnelle);
-
     let statut = body.statut;
     if (!statut) {
       statut = (assigneAId && dateDebut && dateFin) ? 'A faire' : 'À planifier';
@@ -98,13 +94,9 @@ export async function POST(request: NextRequest) {
         dateDebutPrevisionnelle: dateDebut,
         dateFinPrevisionnelle: dateFin,
       },
-      include: {
-        assigneA: true,
-        projet: true,
-      },
+      include: { assigneA: true, projet: true },
     });
 
-    // Log création
     await prisma.activiteTache.create({
       data: {
         tacheId: tache.id,
@@ -125,9 +117,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Recalcul automatique statut projet + risques
     await refreshProjectMetrics(tache.projetId);
-
     return NextResponse.json(tache, { status: 201 });
   } catch (error: any) {
     return NextResponse.json(

@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
         description: body.description,
         statut: body.statut || 'En démarrage',
         chefProjetId: body.chefProjetId,
+        entiteId: body.entiteId || null,
         dateDebutPrevisionnelle: body.dateDebutPrevisionnelle ? new Date(body.dateDebutPrevisionnelle) : null,
         dateFinPrevisionnelle: body.dateFinPrevisionnelle ? new Date(body.dateFinPrevisionnelle) : null,
         equipeProjet: {
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest) {
         chefProjet: true,
         equipeProjet: true,
         taches: true,
+        entitePorteuse: true,
       },
     });
     return NextResponse.json(projet, { status: 201 });

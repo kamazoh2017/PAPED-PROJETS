@@ -1,6 +1,9 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, canDo, forbidden } from '@/lib/require-auth';
+import {
+  requireAuth, forbidden,
+  canManageTaches, canMoveKanban, canValiderTache,
+} from '@/lib/require-auth';
 import { refreshProjectMetrics } from '@/lib/refresh-project-metrics';
 import { getTaskProgression, getPriorityWeight } from '@/lib/project-metrics';
 
@@ -24,13 +27,11 @@ export async function PUT(
 ) {
   const { user, err } = await requireAuth(request);
   if (err) return err;
-  if (!canDo(user, 'detail-projet', 'manage-execution')) return forbidden();
 
   try {
     const { id } = await params;
     const body = await request.json();
 
-    // Lire l'état avant modification pour le log d'activité
     const oldTache = await prisma.tache.findUnique({
       where: { id },
       select: {
@@ -40,15 +41,37 @@ export async function PUT(
         dateDebutEffective: true,
         dateDebutPrevisionnelle: true,
         assigneA: { select: { nom: true, prenoms: true } },
+        projet: { select: { chefProjetId: true } },
       },
     });
-
     if (!oldTache) {
       return NextResponse.json({ error: 'Tâche introuvable.' }, { status: 404 });
     }
 
-    // ── Validation des transitions de statut ──────────────────────────────────
-    if (body.statut !== undefined && body.statut !== oldTache.statut) {
+    const chefProjetId = oldTache.projet.chefProjetId;
+    const changesStatut = body.statut !== undefined && body.statut !== oldTache.statut;
+
+    // ── Contrôle d'accès selon l'opération ──────────────────────────────────
+
+    if (changesStatut) {
+      const newStatut: string = body.statut;
+
+      if (newStatut === 'Validé') {
+        // Valider une tâche : GESTIONNAIRE+ uniquement
+        if (!canValiderTache(user)) return forbidden();
+      } else {
+        // Déplacer vers une autre colonne : contextuel (chef, assigné ou COORDINATEUR+)
+        if (!canMoveKanban(user, chefProjetId, oldTache.assigneAId)) return forbidden();
+      }
+    }
+
+    // Modifications de champs autres que statut : chef de projet ou COORDINATEUR+
+    const changesChamps = Object.keys(body).some(k => k !== 'statut');
+    if (changesChamps && !canManageTaches(user, chefProjetId)) return forbidden();
+
+    // ── Validation des transitions de statut ─────────────────────────────────
+
+    if (changesStatut) {
       const newStatut: string = body.statut;
       const hasStarted = !!oldTache.dateDebutEffective;
       const today = new Date().toISOString().slice(0, 10);
@@ -70,7 +93,6 @@ export async function PUT(
           );
         }
       }
-      // "En attente" : interdit depuis Terminé ou Validé (états finaux)
       if (newStatut === 'En attente' &&
           (oldTache.statut === 'Terminé' || oldTache.statut === 'Validé')) {
         return NextResponse.json(
@@ -79,6 +101,8 @@ export async function PUT(
         );
       }
     }
+
+    // ── Construction des mises à jour ─────────────────────────────────────────
 
     const prioriteNorm = body.priorite === undefined ? undefined : normalizePriority(body.priorite);
     const updates: Record<string, unknown> = {
@@ -91,41 +115,27 @@ export async function PUT(
       dateFinPrevisionnelle:    toOptionalDate(body.dateFinPrevisionnelle),
     };
 
-    // Recalcul immédiat de progression et poidsPriorite
-    if (body.statut !== undefined) {
-      updates.progression = getTaskProgression(body.statut);
-    }
-    if (prioriteNorm !== undefined) {
-      updates.poidsPriorite = getPriorityWeight(prioriteNorm);
-    }
+    if (body.statut !== undefined)  updates.progression   = getTaskProgression(body.statut);
+    if (prioriteNorm !== undefined) updates.poidsPriorite = getPriorityWeight(prioriteNorm);
 
-    // ── Effets de bord sur les dates effectives ───────────────────────────────
-    if (body.statut !== undefined && body.statut !== oldTache.statut) {
+    // Effets de bord sur les dates effectives
+    if (changesStatut) {
       const newStatut: string = body.statut;
 
-      // → En cours : initialiser dateDebutEffective si pas encore définie
       if (newStatut === 'En cours' && body.dateDebutEffective === undefined) {
-        if (!oldTache.dateDebutEffective) {
-          updates.dateDebutEffective = new Date();
-        }
+        if (!oldTache.dateDebutEffective) updates.dateDebutEffective = new Date();
       }
-
-      // → Terminé ou Validé : fixer dateFinEffective ; initialiser dateDebutEffective si besoin
       if ((newStatut === 'Terminé' || newStatut === 'Validé') && body.dateFinEffective === undefined) {
         updates.dateFinEffective = new Date();
         if (!oldTache.dateDebutEffective && body.dateDebutEffective === undefined) {
           updates.dateDebutEffective = new Date();
         }
       }
-
-      // Terminé ou Validé → En cours : remettre dateFinEffective à null
       if (newStatut === 'En cours' &&
           (oldTache.statut === 'Terminé' || oldTache.statut === 'Validé') &&
           body.dateFinEffective === undefined) {
         updates.dateFinEffective = null;
       }
-
-      // En attente → Terminé ou Validé : fixer dateFinEffective
       if ((newStatut === 'Terminé' || newStatut === 'Validé') &&
           oldTache.statut === 'En attente' &&
           body.dateFinEffective === undefined) {
@@ -133,8 +143,7 @@ export async function PUT(
       }
     }
 
-    // Nettoyer les undefined
-    Object.keys(updates).forEach((k) => updates[k] === undefined && delete updates[k]);
+    Object.keys(updates).forEach(k => updates[k] === undefined && delete updates[k]);
 
     const tache = await prisma.tache.update({
       where: { id },
@@ -142,53 +151,38 @@ export async function PUT(
       include: { assigneA: { select: { nom: true, prenoms: true } }, projet: true },
     });
 
-    // Construire les enregistrements d'activité
+    // Journal d'activité
     const activites: {
-      tacheId: string;
-      projetId: string;
-      type: string;
-      detail: string;
-      compteId: string | null;
+      tacheId: string; projetId: string; type: string; detail: string; compteId: string | null;
     }[] = [];
 
-    if (body.statut !== undefined && body.statut !== oldTache.statut) {
+    if (changesStatut) {
       activites.push({
-        tacheId: id,
-        projetId: oldTache.projetId,
+        tacheId: id, projetId: oldTache.projetId,
         type: 'changement_statut',
         detail: JSON.stringify({ avant: oldTache.statut, apres: body.statut }),
         compteId: user.compte.id,
       });
     }
-
     if (body.assigneAId !== undefined && body.assigneAId !== oldTache.assigneAId) {
-      const nomAvant = oldTache.assigneA
-        ? `${oldTache.assigneA.prenoms} ${oldTache.assigneA.nom}`
-        : null;
-      const nomApres = tache.assigneA
-        ? `${tache.assigneA.prenoms} ${tache.assigneA.nom}`
-        : null;
+      const nomAvant = oldTache.assigneA ? `${oldTache.assigneA.prenoms} ${oldTache.assigneA.nom}` : null;
+      const nomApres = tache.assigneA    ? `${tache.assigneA.prenoms} ${tache.assigneA.nom}`    : null;
       activites.push({
-        tacheId: id,
-        projetId: oldTache.projetId,
+        tacheId: id, projetId: oldTache.projetId,
         type: 'assignation',
         detail: JSON.stringify({ avant: nomAvant, apres: nomApres }),
         compteId: user.compte.id,
       });
     }
+    if (activites.length) await prisma.activiteTache.createMany({ data: activites });
 
-    if (activites.length) {
-      await prisma.activiteTache.createMany({ data: activites });
-    }
-
-    // Si assignée à une nouvelle personne, l'ajouter à l'équipe
+    // Ajouter le nouveau assigné à l'équipe projet si nécessaire
     if (body.assigneAId) {
       const projet = await prisma.projet.findUnique({
         where: { id: tache.projetId },
         include: { equipeProjet: { select: { id: true } } },
       });
-
-      const estDansEquipe = projet?.equipeProjet.some((p) => p.id === body.assigneAId);
+      const estDansEquipe = projet?.equipeProjet.some(p => p.id === body.assigneAId);
       if (!estDansEquipe) {
         await prisma.projet.update({
           where: { id: tache.projetId },
@@ -197,11 +191,9 @@ export async function PUT(
       }
     }
 
-    // Recalcul automatique statut projet + risques
     await refreshProjectMetrics(oldTache.projetId);
-
     return NextResponse.json(tache);
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Erreur lors de la mise à jour de la tâche' }, { status: 500 });
   }
 }
@@ -212,22 +204,24 @@ export async function DELETE(
 ) {
   const { user, err } = await requireAuth(request);
   if (err) return err;
-  if (!canDo(user, 'detail-projet', 'delete-tache')) return forbidden();
 
   try {
     const { id } = await params;
 
-    // Récupérer le projetId avant suppression pour le recalcul
-    const tache = await prisma.tache.findUnique({ where: { id }, select: { projetId: true } });
+    const tache = await prisma.tache.findUnique({
+      where: { id },
+      select: { projetId: true, projet: { select: { chefProjetId: true } } },
+    });
     if (!tache) return NextResponse.json({ error: 'Tâche introuvable.' }, { status: 404 });
 
-    await prisma.tache.delete({ where: { id } });
+    // COORDINATEUR+ OU chef de projet
+    if (!canManageTaches(user, tache.projet.chefProjetId)) return forbidden();
 
-    // Recalcul automatique statut projet + risques
+    await prisma.tache.delete({ where: { id } });
     await refreshProjectMetrics(tache.projetId);
 
     return NextResponse.json({ message: 'Tâche supprimée' });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Erreur lors de la suppression de la tâche' }, { status: 500 });
   }
 }

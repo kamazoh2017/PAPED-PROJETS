@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth-session';
+import { requireAuth, forbidden, canCommentOnProjet } from '@/lib/require-auth';
 
 export async function GET(
   _request: NextRequest,
@@ -11,13 +11,9 @@ export async function GET(
     const commentaires = await prisma.commentaireTache.findMany({
       where: { tacheId: id, parentId: null },
       include: {
-        compteAcces: {
-          include: { personne: true },
-        },
+        compteAcces: { include: { personne: true } },
         reponses: {
-          include: {
-            compteAcces: { include: { personne: true } },
-          },
+          include: { compteAcces: { include: { personne: true } } },
           orderBy: { dateCreation: 'asc' },
         },
       },
@@ -33,25 +29,28 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { user, err } = await requireAuth(request);
+  if (err) return err;
+
   try {
     const { id } = await params;
-    const sessionUser = await getSessionUser(request);
-    if (!sessionUser) {
-      return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
-    }
-
     const body = await request.json();
+
     if (!body?.contenu?.trim()) {
       return NextResponse.json({ error: 'Le contenu du commentaire est obligatoire.' }, { status: 400 });
     }
 
-    // Verify task exists
-    const tache = await prisma.tache.findUnique({ where: { id } });
+    const tache = await prisma.tache.findUnique({
+      where: { id },
+      select: { projet: { select: { chefProjetId: true } } },
+    });
     if (!tache) {
       return NextResponse.json({ error: 'Tâche introuvable.' }, { status: 404 });
     }
 
-    // If parentId provided, verify it belongs to this task
+    // GESTIONNAIRE+ (statique) OU chef de projet (contextuel)
+    if (!canCommentOnProjet(user, tache.projet.chefProjetId)) return forbidden();
+
     if (body.parentId) {
       const parent = await prisma.commentaireTache.findUnique({ where: { id: body.parentId } });
       if (!parent || parent.tacheId !== id) {
@@ -62,7 +61,7 @@ export async function POST(
     const commentaire = await prisma.commentaireTache.create({
       data: {
         tacheId: id,
-        compteAccesId: sessionUser.compte.id,
+        compteAccesId: user.compte.id,
         contenu: body.contenu.trim(),
         parentId: body.parentId ?? null,
       },

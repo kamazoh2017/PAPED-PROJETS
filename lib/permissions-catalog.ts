@@ -179,6 +179,24 @@ export const PERMISSIONS_CATALOG: PermNodeDef[] = [
       { key: 'change-password', label: 'Modifier mot de passe' },
     ],
   },
+  {
+    label: 'Opérations',
+    pageKey: 'operations',
+    actions: [
+      { key: 'view',   label: 'Consulter' },
+      { key: 'create', label: 'Créer' },
+      { key: 'update', label: 'Modifier' },
+      { key: 'delete', label: 'Supprimer / Archiver' },
+    ],
+  },
+  {
+    label: 'Occurrences',
+    pageKey: 'occurrences',
+    actions: [
+      { key: 'view',   label: 'Consulter' },
+      { key: 'update', label: 'Mettre à jour le statut' },
+    ],
+  },
 ];
 
 // ── Utilitaires ───────────────────────────────────────────────────────────────

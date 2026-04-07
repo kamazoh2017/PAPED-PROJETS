@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
       telephone: sessionUser.personne?.telephone || null,
       personne: sessionUser.personne ?? null,
       estSuperAdmin: sessionUser.compte.estSuperAdmin,
+      role: sessionUser.compte.estSuperAdmin ? 'ADMINISTRATEUR' : ((sessionUser.compte as any).role ?? 'AGENT'),
       doitChangerMdp: sessionUser.compte.doitChangerMdp,
     });
   } catch {
