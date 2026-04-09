@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Users, Building2, CheckCircle2, Plus, X, MessageSquare, CornerDownRight, Send, Trash2, ShieldCheck, AlertCircle, AlertTriangle, ShieldAlert, ChevronDown, Search, Pencil, Check, ChevronRight, ArrowLeft, Lock, ListChecks } from 'lucide-react';
 import { ROLES_PARTIE_PRENANTE, NIVEAUX_INFLUENCE_INTERET, TYPE_ACTEUR } from '@/lib/parties-prenantes-constants';
 import ProjectGantt from '@/components/ProjectGantt';
+import ReportingTab from './ReportingTab';
 
 interface Entite {
   id: string;
@@ -290,7 +291,7 @@ function getAllowedNextStatuts(task: Tache): string[] {
   });
 }
 
-type TabKey = 'infos' | 'liste-taches' | 'execution' | 'gantt' | 'detail';
+type TabKey = 'infos' | 'liste-taches' | 'execution' | 'gantt' | 'detail' | 'reporting';
 
 const STATUTS_PROJET = [
   'En démarrage',
@@ -1341,6 +1342,7 @@ export default function ProjetDetailPage() {
     { key: 'execution',    label: 'Exécution' },
     { key: 'gantt',        label: 'Gantt' },
     { key: 'detail',       label: 'Détail tâche' },
+    { key: 'reporting',    label: 'Reporting' },
   ];
 
   return (
@@ -2356,6 +2358,11 @@ export default function ProjetDetailPage() {
       {/* ── TAB: GANTT ── */}
       {activeTab === 'gantt' && (
         <ProjectGantt tasks={taches} title="Diagramme de Gantt des tâches" />
+      )}
+
+      {/* ── TAB: REPORTING ── */}
+      {activeTab === 'reporting' && (
+        <ReportingTab projet={projet} />
       )}
 
       {/* ── TAB: DÉTAIL TÂCHE ── */}
