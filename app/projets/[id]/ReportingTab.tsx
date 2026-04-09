@@ -283,7 +283,7 @@ export default function ReportingTab({ projet }: Props) {
       <div className="space-y-5">
         <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
           <BarChart2 size={18} className="text-primary" />
-          <h2 className="text-lg font-bold text-primary">Dashboard macro — Exécution des tâches</h2>
+          <h2 className="text-lg font-bold text-primary">Dashboard macro</h2>
         </div>
 
         {/* KPI cards */}

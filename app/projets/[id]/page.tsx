@@ -1338,11 +1338,11 @@ export default function ProjetDetailPage() {
 
   const TABS: { key: TabKey; label: string }[] = [
     { key: 'infos',        label: 'Informations générales' },
+    { key: 'dashboard',    label: 'Dashboard' },
     { key: 'liste-taches', label: 'Liste des tâches' },
     { key: 'execution',    label: 'Exécution' },
     { key: 'gantt',        label: 'Gantt' },
     { key: 'detail',       label: 'Détail tâche' },
-    { key: 'reporting',    label: 'Reporting' },
   ];
 
   return (
@@ -2360,8 +2360,8 @@ export default function ProjetDetailPage() {
         <ProjectGantt tasks={taches} title="Diagramme de Gantt des tâches" />
       )}
 
-      {/* ── TAB: REPORTING ── */}
-      {activeTab === 'reporting' && (
+      {/* ── TAB: DASHBOARD ── */}
+      {activeTab === 'dashboard' && (
         <ReportingTab projet={projet} />
       )}
 

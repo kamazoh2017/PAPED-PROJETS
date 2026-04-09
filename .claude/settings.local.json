@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma:*)",
+      "Bash(PRISMA_MIGRATE_SKIP_SEED=1 npx prisma migrate dev --name \"phase1_entite_hierarchie_projet_entite\")",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}
