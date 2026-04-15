@@ -1,0 +1,102 @@
+name: Deploy — Hébergeur (MySQL)
+
+# master → PROD     (paped-projet.mshpcmu.ci,     port 3000)
+# dev    → PREPROD  (dev-paped-projet.mshpcmu.ci,  port 3001)
+on:
+  push:
+    branches:
+      - master
+      - dev
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environnement cible'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, master]
+
+# ─────────────────────────────────────────────────────────
+# Secrets GitHub requis (Settings → Secrets → Actions) :
+#
+#   SSH_HOST           IP ou domaine du serveur
+#   SSH_USER           mshpcmu
+#   SSH_KEY            Clé privée SSH
+#   SSH_PORT           22
+#
+#   PREPROD_APP_DIR    /home/mshpcmu/apps/pape-tracker-preprod
+#   PREPROD_MYSQL_URL  mysql://user:pass@localhost:3306/pape_preprod
+#
+#   PROD_APP_DIR       /home/mshpcmu/apps/pape-tracker
+#   PROD_MYSQL_URL     mysql://user:pass@localhost:3306/pape_prod
+# ─────────────────────────────────────────────────────────
+
+jobs:
+  deploy:
+    name: Deploy → ${{ (github.ref_name == 'master' || github.event.inputs.environment == 'master') && 'PROD' || 'PREPROD' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── PREPROD (branch dev) ──────────────────────────
+      - name: Deploy PREPROD
+        if: github.ref_name == 'dev' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 900s
+          script: |
+            set -e
+            export PATH="$HOME/.local/node_modules/.bin:$PATH"
+            cd "${{ secrets.PREPROD_APP_DIR }}"
+            echo "── [1/6] Pull dev ──"
+            git pull origin dev
+            echo "── [2/6] Dépendances ──"
+            npm ci --omit=dev
+            echo "── [3/6] Prisma generate ──"
+            export DATABASE_URL="${{ secrets.PREPROD_MYSQL_URL }}"
+            npx prisma generate --schema prisma/mysql/schema.prisma
+            echo "── [4/6] Migrations MySQL ──"
+            npx prisma migrate deploy --schema prisma/mysql/schema.prisma
+            echo "── [5/6] Build Next.js ──"
+            PORT=3001 npm run hebergeur:build
+            echo "── [6/6] PM2 reload ──"
+            pm2 reload pape-tracker-preprod || PORT=3001 pm2 start scripts/hebergeur-start.js --name pape-tracker-preprod --log ~/logs/pape-tracker/preprod.log
+            pm2 save
+            echo "✓ PREPROD déployé — dev-paped-projet.mshpcmu.ci"
+
+      # ── PROD (branch master) ──────────────────────────
+      - name: Deploy PROD
+        if: github.ref_name == 'master' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'master')
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 900s
+          script: |
+            set -e
+            export PATH="$HOME/.local/node_modules/.bin:$PATH"
+            cd "${{ secrets.PROD_APP_DIR }}"
+            echo "── [1/6] Pull master ──"
+            git pull origin master
+            echo "── [2/6] Dépendances ──"
+            npm ci --omit=dev
+            echo "── [3/6] Prisma generate ──"
+            export DATABASE_URL="${{ secrets.PROD_MYSQL_URL }}"
+            npx prisma generate --schema prisma/mysql/schema.prisma
+            echo "── [4/6] Migrations MySQL ──"
+            npx prisma migrate deploy --schema prisma/mysql/schema.prisma
+            echo "── [5/6] Build Next.js ──"
+            PORT=3000 npm run hebergeur:build
+            echo "── [6/6] PM2 reload ──"
+            pm2 reload pape-tracker || PORT=3000 pm2 start scripts/hebergeur-start.js --name pape-tracker --log ~/logs/pape-tracker/prod.log
+            pm2 save
+            echo "✓ PROD déployé — paped-projet.mshpcmu.ci"
