@@ -1,0 +1,47 @@
+name: Deploy — Railway (PostgreSQL)
+
+# Déclenché sur push vers `master` OU manuellement
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+# ─────────────────────────────────────────────────────────
+# Railway déploie automatiquement sur push vers master
+# via son intégration GitHub native.
+# Ce workflow est un complément pour valider le build
+# AVANT que Railway ne déploie (lint + build check).
+#
+# Si Railway est connecté directement au repo GitHub,
+# vous pouvez désactiver ce workflow et laisser Railway
+# gérer seul le déploiement.
+# ─────────────────────────────────────────────────────────
+
+jobs:
+  validate:
+    name: Validate build (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build check (PostgreSQL schema)
+        env:
+          # URL PostgreSQL fictive pour le build check — Railway injecte la vraie en prod
+          DATABASE_URL: "postgresql://check:check@localhost:5432/check"
+        run: node scripts/railway-build.js
