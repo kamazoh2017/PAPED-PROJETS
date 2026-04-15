@@ -37,7 +37,7 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
     {
-      // ── PREPROD — branch dev — dev-paped-projet.mshpcmu.ci ───────
+      // ── PREPROD — branch preprod — dev-paped-projet.mshpcmu.ci ───
       name: 'pape-tracker-preprod',
       script: 'scripts/hebergeur-start.js',
       cwd: '/home/mshpcmu/apps/pape-tracker-preprod',

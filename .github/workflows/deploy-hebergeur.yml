@@ -1,20 +1,20 @@
 name: Deploy — Hébergeur (MySQL)
 
-# master → PROD     (paped-projet.mshpcmu.ci,     port 3000)
-# dev    → PREPROD  (dev-paped-projet.mshpcmu.ci,  port 3001)
+# master  → PROD     (paped-projet.mshpcmu.ci,     port 3000)
+# preprod → PREPROD  (dev-paped-projet.mshpcmu.ci,  port 3001)
 on:
   push:
     branches:
       - master
-      - dev
+      - preprod
   workflow_dispatch:
     inputs:
       environment:
         description: 'Environnement cible'
         required: true
-        default: 'dev'
+        default: 'preprod'
         type: choice
-        options: [dev, master]
+        options: [preprod, master]
 
 # ─────────────────────────────────────────────────────────
 # Secrets GitHub requis (Settings → Secrets → Actions) :
@@ -41,9 +41,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── PREPROD (branch dev) ──────────────────────────
+      # ── PREPROD (branch preprod) ──────────────────────
       - name: Deploy PREPROD
-        if: github.ref_name == 'dev' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+        if: github.ref_name == 'preprod' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'preprod')
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -55,8 +55,8 @@ jobs:
             set -e
             export PATH="$HOME/.local/node_modules/.bin:$PATH"
             cd "${{ secrets.PREPROD_APP_DIR }}"
-            echo "── [1/6] Pull dev ──"
-            git pull origin dev
+            echo "── [1/6] Pull preprod ──"
+            git pull origin preprod
             echo "── [2/6] Dépendances ──"
             npm ci --omit=dev
             echo "── [3/6] Prisma generate ──"
