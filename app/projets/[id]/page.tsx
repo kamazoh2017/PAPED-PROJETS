@@ -291,7 +291,7 @@ function getAllowedNextStatuts(task: Tache): string[] {
   });
 }
 
-type TabKey = 'infos' | 'liste-taches' | 'execution' | 'gantt' | 'detail' | 'reporting';
+type TabKey = 'infos' | 'liste-taches' | 'execution' | 'gantt' | 'detail' | 'reporting' | 'dashboard';
 
 const STATUTS_PROJET = [
   'En démarrage',

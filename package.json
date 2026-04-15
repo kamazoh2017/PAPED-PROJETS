@@ -13,7 +13,16 @@
     "prisma:push": "prisma db push",
     "prisma:seed": "prisma db seed",
     "railway-build": "node scripts/railway-build.js",
-    "railway-start": "node scripts/railway-start.js"
+    "railway-start": "node scripts/railway-start.js",
+    "hebergeur:build": "node scripts/hebergeur-build.js",
+    "hebergeur:start": "node scripts/hebergeur-start.js",
+    "hebergeur:migrate:dev": "prisma migrate dev --schema prisma/mysql/schema.prisma",
+    "hebergeur:migrate:deploy": "prisma migrate deploy --schema prisma/mysql/schema.prisma",
+    "hebergeur:generate": "prisma generate --schema prisma/mysql/schema.prisma",
+    "hebergeur:db:push": "prisma db push --schema prisma/mysql/schema.prisma",
+    "migration:generate": "prisma generate --schema prisma/postgresql/schema.prisma && prisma generate --schema prisma/mysql/schema.prisma",
+    "migration:run": "node scripts/migrate-pg-to-mysql.js",
+    "migration:run:force": "node scripts/migrate-pg-to-mysql.js --force"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
