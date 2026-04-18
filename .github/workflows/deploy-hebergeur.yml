@@ -24,11 +24,11 @@ on:
 #   SSH_KEY            Clé privée SSH
 #   SSH_PORT           22
 #
-#   PREPROD_APP_DIR    /home/mshpcmu/apps/pape-tracker-preprod
-#   PREPROD_MYSQL_URL  mysql://user:pass@localhost:3306/pape_preprod
+#   PREPROD_APP_DIR    /home/mshpcmu/apps/paped-projet-preprod
+#   PREPROD_MYSQL_URL  mysql://user:pass@localhost:3306/..._preprod
 #
-#   PROD_APP_DIR       /home/mshpcmu/apps/pape-tracker
-#   PROD_MYSQL_URL     mysql://user:pass@localhost:3306/pape_prod
+#   PROD_APP_DIR       /home/mshpcmu/apps/paped-projet
+#   PROD_MYSQL_URL     mysql://user:pass@localhost:3306/..._prod
 # ─────────────────────────────────────────────────────────
 
 jobs:
@@ -67,7 +67,8 @@ jobs:
             echo "── [5/6] Build Next.js ──"
             PORT=3001 npm run hebergeur:build
             echo "── [6/6] PM2 reload ──"
-            pm2 reload pape-tracker-preprod || PORT=3001 pm2 start scripts/hebergeur-start.js --name pape-tracker-preprod --log ~/logs/pape-tracker/preprod.log
+            mkdir -p ~/logs/paped-projet
+            pm2 reload paped-projet-preprod || pm2 start ecosystem.config.js --only paped-projet-preprod
             pm2 save
             echo "✓ PREPROD déployé — dev-paped-projet.mshpcmu.ci"
 
@@ -97,6 +98,7 @@ jobs:
             echo "── [5/6] Build Next.js ──"
             PORT=3000 npm run hebergeur:build
             echo "── [6/6] PM2 reload ──"
-            pm2 reload pape-tracker || PORT=3000 pm2 start scripts/hebergeur-start.js --name pape-tracker --log ~/logs/pape-tracker/prod.log
+            mkdir -p ~/logs/paped-projet
+            pm2 reload paped-projet || pm2 start ecosystem.config.js --only paped-projet
             pm2 save
             echo "✓ PROD déployé — paped-projet.mshpcmu.ci"

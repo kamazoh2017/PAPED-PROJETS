@@ -3,17 +3,25 @@
  * Serveur : mshpcmu.ci (cPanel)
  * PM2 installé dans : ~/.local/node_modules/.bin/pm2
  *
+ * Arborescence serveur :
+ *   ~/apps/paped-projet           → code PROD    (branch master, port 3000)
+ *   ~/apps/paped-projet-preprod   → code PREPROD (branch preprod, port 3001)
+ *   ~/public_html/paped-projet       → reverse proxy Apache (.htaccess → :3000)
+ *   ~/public_html/dev-paped-projet   → reverse proxy Apache (.htaccess → :3001)
+ *   ~/logs/paped-projet/             → logs PM2
+ *
  * Premier démarrage PROD :
- *   PORT=3000 pm2 start scripts/hebergeur-start.js --name pape-tracker --log ~/logs/pape-tracker/prod.log
+ *   pm2 start ecosystem.config.js --only paped-projet
  *
  * Premier démarrage PREPROD :
- *   PORT=3001 pm2 start scripts/hebergeur-start.js --name pape-tracker-preprod --log ~/logs/pape-tracker/preprod.log
+ *   pm2 start ecosystem.config.js --only paped-projet-preprod
  *
  * Reload sans downtime (fait automatiquement par CI/CD) :
- *   pm2 reload pape-tracker
- *   pm2 reload pape-tracker-preprod
+ *   pm2 reload paped-projet
+ *   pm2 reload paped-projet-preprod
  *
  * Persistance au redémarrage serveur :
+ *   pm2 save
  *   (crontab -l; echo "@reboot sleep 30 && /home/mshpcmu/.local/node_modules/.bin/pm2 resurrect") | crontab -
  */
 
@@ -21,9 +29,9 @@ module.exports = {
   apps: [
     {
       // ── PROD — branch master — paped-projet.mshpcmu.ci ───────────
-      name: 'pape-tracker',
+      name: 'paped-projet',
       script: 'scripts/hebergeur-start.js',
-      cwd: '/home/mshpcmu/apps/pape-tracker',
+      cwd: '/home/mshpcmu/apps/paped-projet',
       autorestart: true,
       watch: false,
       max_memory_restart: '512M',
@@ -31,16 +39,16 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3000,
       },
-      out_file: '/home/mshpcmu/logs/pape-tracker/prod-out.log',
-      error_file: '/home/mshpcmu/logs/pape-tracker/prod-error.log',
+      out_file: '/home/mshpcmu/logs/paped-projet/prod-out.log',
+      error_file: '/home/mshpcmu/logs/paped-projet/prod-error.log',
       merge_logs: true,
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
     {
       // ── PREPROD — branch preprod — dev-paped-projet.mshpcmu.ci ───
-      name: 'pape-tracker-preprod',
+      name: 'paped-projet-preprod',
       script: 'scripts/hebergeur-start.js',
-      cwd: '/home/mshpcmu/apps/pape-tracker-preprod',
+      cwd: '/home/mshpcmu/apps/paped-projet-preprod',
       autorestart: true,
       watch: false,
       max_memory_restart: '256M',
@@ -48,8 +56,8 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3001,
       },
-      out_file: '/home/mshpcmu/logs/pape-tracker/preprod-out.log',
-      error_file: '/home/mshpcmu/logs/pape-tracker/preprod-error.log',
+      out_file: '/home/mshpcmu/logs/paped-projet/preprod-out.log',
+      error_file: '/home/mshpcmu/logs/paped-projet/preprod-error.log',
       merge_logs: true,
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
