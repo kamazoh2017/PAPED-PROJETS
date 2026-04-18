@@ -1,7 +1,9 @@
-name: Deploy — Hébergeur (MySQL)
+name: Deploy — Hébergeur (MySQL + Passenger)
 
-# master  → PROD     (paped-projet.mshpcmu.ci,     port 3000)
-# preprod → PREPROD  (dev-paped-projet.mshpcmu.ci,  port 3001)
+# master  → PROD     (paped-projet.mshpcmu.ci)
+# preprod → PREPROD  (dev-paped-projet.mshpcmu.ci)
+# Passenger gère le process Node.js (géré via cPanel Setup Node.js App)
+# Redémarrage = `touch tmp/restart.txt` (pas de PM2)
 on:
   push:
     branches:
@@ -65,11 +67,10 @@ jobs:
             echo "── [4/6] Migrations MySQL ──"
             npx prisma migrate deploy --schema prisma/mysql/schema.prisma
             echo "── [5/6] Build Next.js ──"
-            PORT=3001 npm run hebergeur:build
-            echo "── [6/6] PM2 reload ──"
-            mkdir -p ~/logs/paped-projet
-            pm2 reload paped-projet-preprod || pm2 start ecosystem.config.js --only paped-projet-preprod
-            pm2 save
+            npm run hebergeur:build
+            echo "── [6/6] Redémarrage Passenger ──"
+            mkdir -p tmp
+            touch tmp/restart.txt
             echo "✓ PREPROD déployé — dev-paped-projet.mshpcmu.ci"
 
       # ── PROD (branch master) ──────────────────────────
@@ -96,9 +97,8 @@ jobs:
             echo "── [4/6] Migrations MySQL ──"
             npx prisma migrate deploy --schema prisma/mysql/schema.prisma
             echo "── [5/6] Build Next.js ──"
-            PORT=3000 npm run hebergeur:build
-            echo "── [6/6] PM2 reload ──"
-            mkdir -p ~/logs/paped-projet
-            pm2 reload paped-projet || pm2 start ecosystem.config.js --only paped-projet
-            pm2 save
+            npm run hebergeur:build
+            echo "── [6/6] Redémarrage Passenger ──"
+            mkdir -p tmp
+            touch tmp/restart.txt
             echo "✓ PROD déployé — paped-projet.mshpcmu.ci"
