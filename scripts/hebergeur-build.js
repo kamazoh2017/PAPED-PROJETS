@@ -7,10 +7,30 @@
  */
 
 const path = require('path');
+const fs = require('fs');
 const { spawnSync } = require('child_process');
 
 const rootDir = path.resolve(__dirname, '..');
 const mysqlSchema = path.join(rootDir, 'prisma', 'mysql', 'schema.prisma');
+
+const envFile = path.join(rootDir, '.env');
+if (fs.existsSync(envFile)) {
+  try {
+    require('dotenv').config({ path: envFile });
+  } catch (_) {
+    const raw = fs.readFileSync(envFile, 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)\s*$/i);
+      if (m && !process.env[m[1]]) {
+        let v = m[2];
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+          v = v.slice(1, -1);
+        }
+        process.env[m[1]] = v;
+      }
+    }
+  }
+}
 
 function run(command) {
   console.log(`\n> ${command}`);
