@@ -67,6 +67,24 @@ function main() {
   console.log('[hebergeur:build] Génération du client Prisma (MySQL)...');
   run(`npx prisma generate --schema "${mysqlSchema}"`);
 
+  // ── Le code applicatif importe @prisma/client (par défaut). Ce dernier
+  //    pointe vers node_modules/.prisma/client, qui a été généré depuis
+  //    prisma/schema.prisma (provider SQLite) → incompatible avec MySQL.
+  //    On remplace donc le client par défaut par le client MySQL fraîchement
+  //    généré dans node_modules/.prisma/client-mysql.
+  const mysqlClientDir   = path.join(rootDir, 'node_modules', '.prisma', 'client-mysql');
+  const defaultClientDir = path.join(rootDir, 'node_modules', '.prisma', 'client');
+
+  if (fs.existsSync(mysqlClientDir)) {
+    console.log('[hebergeur:build] Remplacement de @prisma/client par le client MySQL...');
+    if (fs.existsSync(defaultClientDir)) {
+      fs.rmSync(defaultClientDir, { recursive: true, force: true });
+    }
+    fs.cpSync(mysqlClientDir, defaultClientDir, { recursive: true });
+  } else {
+    console.warn('[hebergeur:build] ATTENTION : client MySQL introuvable à', mysqlClientDir);
+  }
+
   console.log('[hebergeur:build] Build Next.js...');
   run('npx next build');
 
