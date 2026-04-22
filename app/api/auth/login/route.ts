@@ -85,6 +85,11 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (err) {
     console.error('[login] erreur:', err);
-    return NextResponse.json({ error: 'Erreur lors de la connexion.' }, { status: 500 });
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    return NextResponse.json(
+      { error: 'Erreur lors de la connexion.', debug: { message, stack, hasDbUrl: !!process.env.DATABASE_URL, dbProtocol: (process.env.DATABASE_URL || '').split('://')[0] } },
+      { status: 500 }
+    );
   }
 }
