@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Users, Building2, CheckCircle2, Plus, X, MessageSquare, CornerDownRight, Send, Trash2, ShieldCheck, AlertCircle, AlertTriangle, ShieldAlert, ChevronDown, Search, Pencil, Check, ChevronRight, ArrowLeft, Lock, ListChecks } from 'lucide-react';
+import HistoriqueTimeline from '@/components/HistoriqueTimeline';
 import { ROLES_PARTIE_PRENANTE, NIVEAUX_INFLUENCE_INTERET, TYPE_ACTEUR } from '@/lib/parties-prenantes-constants';
 import ProjectGantt from '@/components/ProjectGantt';
 import ReportingTab from './ReportingTab';
@@ -291,7 +292,7 @@ function getAllowedNextStatuts(task: Tache): string[] {
   });
 }
 
-type TabKey = 'infos' | 'liste-taches' | 'execution' | 'gantt' | 'detail' | 'reporting' | 'dashboard';
+type TabKey = 'infos' | 'liste-taches' | 'execution' | 'gantt' | 'detail' | 'reporting' | 'dashboard' | 'historique';
 
 const STATUTS_PROJET = [
   'En démarrage',
@@ -1343,6 +1344,7 @@ export default function ProjetDetailPage() {
     { key: 'execution',    label: 'Exécution' },
     { key: 'gantt',        label: 'Gantt' },
     { key: 'detail',       label: 'Détail tâche' },
+    { key: 'historique',   label: 'Historique' },
   ];
 
   return (
@@ -2925,6 +2927,14 @@ export default function ProjetDetailPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── TAB: HISTORIQUE ── */}
+      {activeTab === 'historique' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <h2 className="text-lg font-bold text-primary mb-4">Historique des modifications</h2>
+          <HistoriqueTimeline table="Projet" id={projet.id} />
         </div>
       )}
     </div>
