@@ -3,8 +3,9 @@
 // Migrations : npx prisma migrate deploy --schema prisma/mysql/schema.prisma
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../../node_modules/.prisma/client-mysql"
+  provider      = "prisma-client-js"
+  output        = "../../node_modules/.prisma/client-mysql"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
