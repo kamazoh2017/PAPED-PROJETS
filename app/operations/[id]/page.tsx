@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Pencil, Pause, Play, Archive, Plus, X, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import HistoriqueDrawer from '@/components/HistoriqueDrawer';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -486,6 +487,7 @@ export default function OperationDetailPage() {
             </div>
           </div>
           <div className="flex gap-2 flex-shrink-0">
+            <HistoriqueDrawer table="Operation" id={operation.id} titre={operation.libelle} />
             <button onClick={() => setShowEditOp(!showEditOp)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
               <Pencil size={14} /> Modifier
             </button>

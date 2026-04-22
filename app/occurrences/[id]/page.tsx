@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, CheckCircle2, Play, XCircle, Send } from 'lucide-react';
+import HistoriqueDrawer from '@/components/HistoriqueDrawer';
 
 interface Entite { id: string; libelle: string }
 interface Personne { id: string; nom: string; prenoms: string; entite: Entite }
@@ -196,9 +197,12 @@ export default function OccurrenceDetailPage() {
               {tache.operation.entite && <span>· {tache.operation.entite.libelle}</span>}
             </div>
           </div>
-          <span className="px-3 py-1 rounded-full text-sm font-semibold flex-shrink-0" style={STATUT_STYLE[statut]}>
-            {statut}
-          </span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <HistoriqueDrawer table="OccurrenceTache" id={occurrence.id} titre={tache.libelle} />
+            <span className="px-3 py-1 rounded-full text-sm font-semibold" style={STATUT_STYLE[statut]}>
+              {statut}
+            </span>
+          </div>
         </div>
 
         {/* Détails */}

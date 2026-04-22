@@ -23,10 +23,12 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   // ── Vérification du secret (obligatoire en production) ────────────────────
-  const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = request.headers.get('authorization');
-    if (auth !== `Bearer ${secret}`) {
+  const expected = process.env.CRON_SECRET;
+  if (expected) {
+    const bearer = request.headers.get('authorization');
+    const legacy = request.headers.get('x-cron-secret');
+    const ok = bearer === `Bearer ${expected}` || legacy === expected;
+    if (!ok) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
   }
