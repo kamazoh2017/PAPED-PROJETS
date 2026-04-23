@@ -10,13 +10,8 @@ on:
       - master
       - preprod
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environnement cible'
-        required: true
-        default: 'preprod'
-        type: choice
-        options: [preprod, master]
+    # Aucun input — on choisit directement la branche dans l'UI
+    # (master → PROD, preprod → PREPROD)
 
 # ─────────────────────────────────────────────────────────
 # Secrets GitHub requis (Settings → Secrets → Actions) :
@@ -35,7 +30,7 @@ on:
 
 jobs:
   deploy:
-    name: Deploy → ${{ (github.ref_name == 'master' || github.event.inputs.environment == 'master') && 'PROD' || 'PREPROD' }}
+    name: Deploy → ${{ github.ref_name == 'master' && 'PROD' || 'PREPROD' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -45,7 +40,7 @@ jobs:
 
       # ── PREPROD (branch preprod) ──────────────────────
       - name: Deploy PREPROD
-        if: github.ref_name == 'preprod' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'preprod')
+        if: github.ref_name == 'preprod'
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -75,7 +70,7 @@ jobs:
 
       # ── PROD (branch master) ──────────────────────────
       - name: Deploy PROD
-        if: github.ref_name == 'master' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'master')
+        if: github.ref_name == 'master'
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
