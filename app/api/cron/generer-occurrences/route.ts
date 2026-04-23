@@ -5,9 +5,14 @@ import { calculerDatesOccurrences } from '@/lib/occurrence-generator';
 // Route appelée quotidiennement (ex: Vercel Cron, Railway Cron, ou timer externe)
 // Protégée par un secret partagé dans CRON_SECRET
 export async function GET(request: NextRequest) {
-  const secret = request.headers.get('x-cron-secret');
-  if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: 'Non autorisé.' }, { status: 401 });
+  const expected = process.env.CRON_SECRET;
+  if (expected) {
+    const bearer = request.headers.get('authorization');
+    const legacy = request.headers.get('x-cron-secret');
+    const ok = bearer === `Bearer ${expected}` || legacy === expected;
+    if (!ok) {
+      return NextResponse.json({ error: 'Non autorisé.' }, { status: 401 });
+    }
   }
 
   const maintenant  = new Date();
