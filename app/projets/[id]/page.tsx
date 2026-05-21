@@ -1505,6 +1505,7 @@ export default function ProjetDetailPage() {
                       statut: detailEdit.statut,
                       chefProjetId: detailEdit.chefProjetId,
                       entiteId: detailEdit.entiteId !== undefined ? (detailEdit.entiteId || null) : undefined,
+                      programmeId: detailEdit.programmeId !== undefined ? (detailEdit.programmeId || null) : undefined,
                       dateDebutPrevisionnelle: detailEdit.dateDebutPrevisionnelle ?? toInputDate(projet.dateDebutPrevisionnelle),
                       dateFinPrevisionnelle: detailEdit.dateFinPrevisionnelle ?? toInputDate(projet.dateFinPrevisionnelle),
                       dateDebutEffective: detailEdit.dateDebutEffective ?? toInputDate(projet.dateDebutEffective),
