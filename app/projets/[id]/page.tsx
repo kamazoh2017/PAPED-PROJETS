@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Users, Building2, CheckCircle2, Plus, X, MessageSquare, CornerDownRight, Send, Trash2, ShieldCheck, AlertCircle, AlertTriangle, ShieldAlert, ChevronDown, Search, Pencil, Check, ChevronRight, ArrowLeft, Lock, ListChecks } from 'lucide-react';
 import HistoriqueTimeline from '@/components/HistoriqueTimeline';
+import CadreLogiqueTree from '@/components/CadreLogiqueTree';
 import { ROLES_PARTIE_PRENANTE, NIVEAUX_INFLUENCE_INTERET, TYPE_ACTEUR } from '@/lib/parties-prenantes-constants';
 import ProjectGantt from '@/components/ProjectGantt';
 import ReportingTab from './ReportingTab';
@@ -292,7 +293,7 @@ function getAllowedNextStatuts(task: Tache): string[] {
   });
 }
 
-type TabKey = 'infos' | 'liste-taches' | 'execution' | 'gantt' | 'detail' | 'reporting' | 'dashboard' | 'historique';
+type TabKey = 'infos' | 'liste-taches' | 'execution' | 'gantt' | 'detail' | 'reporting' | 'dashboard' | 'historique' | 'cadre-logique';
 
 const STATUTS_PROJET = [
   'En démarrage',
@@ -934,6 +935,7 @@ export default function ProjetDetailPage() {
   const [loading, setLoading] = useState(true);
   const [ressources, setRessources] = useState<Personne[]>([]);
   const [toutesEntites, setToutesEntites] = useState<{ id: string; libelle: string; typeEntite?: string | null }[]>([]);
+  const [tousProgrammes, setTousProgrammes] = useState<{ id: string; libelle: string; code: string | null; statut: string }[]>([]);
   const [showAddEquipe, setShowAddEquipe] = useState(false);
   const [addingEquipeIds, setAddingEquipeIds] = useState<string[]>([]);
   const [removingMembreId, setRemovingMembreId] = useState<string|null>(null);
@@ -942,6 +944,7 @@ export default function ProjetDetailPage() {
   useEffect(() => {
     fetch('/api/personnes').then(r => r.json()).then(d => setRessources(Array.isArray(d) ? d : []));
     fetch('/api/entites').then(r => r.json()).then(d => setToutesEntites(Array.isArray(d) ? d : []));
+    fetch('/api/programmes').then(r => r.json()).then(d => setTousProgrammes(Array.isArray(d) ? d : []));
     fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(d => { if (d) setSession(d); }).catch(() => {});
   }, []);
   const [activeTab, setActiveTab] = useState<TabKey>('infos');
@@ -1338,13 +1341,14 @@ export default function ProjetDetailPage() {
   const projFinPrev = projet.dateFinPrevisionnelle ? toInputDate(projet.dateFinPrevisionnelle) : '';
 
   const TABS: { key: TabKey; label: string }[] = [
-    { key: 'infos',        label: 'Informations générales' },
-    { key: 'dashboard',    label: 'Dashboard' },
-    { key: 'liste-taches', label: 'Liste des tâches' },
-    { key: 'execution',    label: 'Exécution' },
-    { key: 'gantt',        label: 'Gantt' },
-    { key: 'detail',       label: 'Détail tâche' },
-    { key: 'historique',   label: 'Historique' },
+    { key: 'infos',         label: 'Informations générales' },
+    { key: 'dashboard',     label: 'Dashboard' },
+    { key: 'cadre-logique', label: 'Cadre logique' },
+    { key: 'liste-taches',  label: 'Liste des tâches' },
+    { key: 'execution',     label: 'Exécution' },
+    { key: 'gantt',         label: 'Gantt' },
+    { key: 'detail',        label: 'Détail tâche' },
+    { key: 'historique',    label: 'Historique' },
   ];
 
   return (
@@ -1577,6 +1581,21 @@ export default function ProjetDetailPage() {
                   {toutesEntites.map(e => (
                     <option key={e.id} value={e.id}>
                       {e.typeEntite ? `[${e.typeEntite}] ` : ''}{e.libelle}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Programme</label>
+                <select
+                  value={detailEdit.programmeId ?? (projet as any).programmeId ?? ''}
+                  onChange={e => setDetailEdit((d: any) => ({ ...d, programmeId: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                >
+                  <option value="">— Aucun programme (projet autonome) —</option>
+                  {tousProgrammes.filter(p => p.statut === 'Actif').map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.code ? `[${p.code}] ` : ''}{p.libelle}
                     </option>
                   ))}
                 </select>
@@ -2927,6 +2946,16 @@ export default function ProjetDetailPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── TAB: CADRE LOGIQUE ── */}
+      {activeTab === 'cadre-logique' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <CadreLogiqueTree
+            projetId={projet.id}
+            canEdit={!!session?.estSuperAdmin || (session?.role && ['COORDINATEUR', 'ADMINISTRATEUR'].includes(session.role)) || (session?.personne?.id != null && projet.chefProjet?.id === session.personne.id)}
+          />
         </div>
       )}
 

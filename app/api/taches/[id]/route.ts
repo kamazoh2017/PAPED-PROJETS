@@ -111,6 +111,7 @@ export async function PUT(
       priorite:                 prioriteNorm,
       assigneAId:               body.assigneAId,
       statut:                   body.statut,
+      activiteId:               body.activiteId !== undefined ? (body.activiteId || null) : undefined,
       dateDebutPrevisionnelle:  toOptionalDate(body.dateDebutPrevisionnelle),
       dateFinPrevisionnelle:    toOptionalDate(body.dateFinPrevisionnelle),
     };

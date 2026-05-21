@@ -32,6 +32,7 @@ export async function GET(
         },
         risques: true,
         entitePorteuse: true,
+        programme: { select: { id: true, libelle: true, code: true, statut: true, bailleur: true } },
       },
     });
 
@@ -86,6 +87,7 @@ export async function PUT(
       statut:                   body.statut,
       chefProjetId:             body.chefProjetId,
       entiteId:                 body.entiteId !== undefined ? (body.entiteId || null) : undefined,
+      programmeId:              body.programmeId !== undefined ? (body.programmeId || null) : undefined,
       dateDebutPrevisionnelle:  toOptDate(body.dateDebutPrevisionnelle),
       dateFinPrevisionnelle:    toOptDate(body.dateFinPrevisionnelle),
       dateDebutEffective:       toOptDate(body.dateDebutEffective),

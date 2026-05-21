@@ -1,6 +1,6 @@
 # Migration vers la Gestion par Cadre Logique (LogFrame simplifié)
 
-**Statut** : Phase 0 ✅ implémentée — déploiement en cours
+**Statut** : Phase 0 ✅ **TERMINÉE et déployée en PROD** — prochaine étape : Phase 1 (UI Programme)
 **Dernière mise à jour** : 2026-05-21
 **Document de référence unique** — toute décision liée à cette évolution doit être tracée ici.
 
@@ -289,16 +289,16 @@ Aucun script auto. Le chef projet :
 
 ## 9. Plan de mise en œuvre par phases
 
-### Phase 0 ✅ — Préparation données
+### Phase 0 ✅ — Préparation données (TERMINÉE)
 - [x] Document de référence créé
 - [x] Schemas Prisma SQLite + MySQL modifiés
 - [x] Migration SQLite `20260511100000_add_logframe` générée + appliquée localement
 - [x] Migration MySQL `20260511100000_add_logframe` écrite (CREATE TABLE + ALTER ADD COLUMN nullable)
 - [x] Backups MySQL PREPROD + PROD effectués (`~/backups/`)
 - [x] Backup SQLite local (`prisma/dev.db.backup_avant_logframe`)
-- [ ] Commit + push `dev`
-- [ ] Déploiement PREPROD validé (workflow GitHub Actions vert + login OK + DB intacte)
-- [ ] Déploiement PROD validé (idem)
+- [x] Commit + push `dev`
+- [x] Déploiement PREPROD validé (workflow vert + login OK + DB intacte + colonnes programmeId/activiteId présentes)
+- [x] Déploiement PROD validé (workflow vert + 14 comptes/27 projets inchangés + colonnes ajoutées)
 
 ### Phase 1 — Programme (2 jours)
 - [ ] API `/api/programmes` (GET, POST) + `/api/programmes/[id]` (GET, PUT, DELETE)
@@ -392,12 +392,13 @@ PROG-SANTE-2028 (Programme)
 ## 13. Suivi d'avancement
 
 ### État global
+- [x] **Phase 0 : TERMINÉE et déployée en PROD ✅**
 - [x] Phase 0 : Document de référence rédigé
 - [x] Phase 0 : Schémas Prisma mis à jour (SQLite + MySQL)
 - [x] Phase 0 : Migration locale appliquée sans perte
 - [x] Phase 0 : Migration MySQL écrite et prête
-- [ ] Phase 0 : Déploiement PREPROD validé
-- [ ] Phase 0 : Déploiement PROD validé
+- [x] Phase 0 : Déploiement PREPROD validé
+- [x] Phase 0 : Déploiement PROD validé
 - [ ] Phase 1 : Programme (CRUD + UI)
 - [ ] Phase 2 : Résultats + Activités
 - [ ] Phase 3 : Rattachement tâches
@@ -421,3 +422,4 @@ PROG-SANTE-2028 (Programme)
 |---|---|---|---|
 | 2026-04-23 | 0 | Création du document | Claude/Dev |
 | 2026-05-21 | 0 | Schemas Prisma + migrations SQLite/MySQL générés | Claude/Dev |
+| 2026-05-21 | 0 | Phase 0 TERMINÉE — déployée en PROD sans perte | Claude/Dev |

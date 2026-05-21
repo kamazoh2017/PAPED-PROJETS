@@ -180,6 +180,26 @@ export const PERMISSIONS_CATALOG: PermNodeDef[] = [
     ],
   },
   {
+    label: 'Programmes',
+    pageKey: 'programmes',
+    actions: [
+      { key: 'view',   label: 'Consulter' },
+      { key: 'create', label: 'Créer' },
+      { key: 'update', label: 'Modifier' },
+      { key: 'delete', label: 'Supprimer / Archiver' },
+    ],
+  },
+  {
+    label: 'Cadre logique (Résultats / Activités)',
+    pageKey: 'cadre-logique',
+    actions: [
+      { key: 'view',   label: 'Consulter' },
+      { key: 'create', label: 'Créer un résultat ou une activité' },
+      { key: 'update', label: 'Modifier' },
+      { key: 'delete', label: 'Supprimer' },
+    ],
+  },
+  {
     label: 'Opérations',
     pageKey: 'operations',
     actions: [
