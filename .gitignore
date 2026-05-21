@@ -43,3 +43,10 @@ yarn-error.log*
 # Build
 build/
 dist/
+
+# Backups locaux
+prisma/dev.db.backup_avant_logframe
+prisma/dev.db.test
+prisma/prisma/
+migrations-list.txt
+tsconfig.tsbuildinfo
