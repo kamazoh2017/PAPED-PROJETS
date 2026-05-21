@@ -14,6 +14,9 @@ const TABLES_AUTORISEES = new Set([
   'CompteAcces',
   'PersonneRessource',
   'Entite',
+  'Programme',
+  'ResultatAttendu',
+  'Activite',
 ]);
 
 export async function GET(

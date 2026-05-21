@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BarChart2, Building2, CalendarClock, FolderKanban, KeyRound, LayoutDashboard, LogOut, Repeat2, ShieldCheck, Users } from 'lucide-react';
+import { BarChart2, Briefcase, Building2, CalendarClock, FolderKanban, KeyRound, LayoutDashboard, LogOut, Repeat2, ShieldCheck, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 interface SessionInfo {
@@ -54,6 +54,9 @@ export default function Navigation() {
         <p className="px-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">Projets</p>
         <SubNavLink href="/projets/tableau-de-bord" active={isActive('/projets/tableau-de-bord')} icon={<BarChart2 size={14} />}>
           DASHBOARD PROJETS
+        </SubNavLink>
+        <SubNavLink href="/programmes" active={isActive('/programmes')} icon={<Briefcase size={14} />}>
+          PROGRAMMES
         </SubNavLink>
         <SubNavLink
           href="/projets"

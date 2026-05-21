@@ -111,6 +111,10 @@ const READ_ALL: Perm[] = [
   // Opérations & occurrences
   { pageKey: 'operations',  actionKey: 'view' },
   { pageKey: 'occurrences', actionKey: 'view' },
+
+  // Programmes & Cadre logique (lecture pour tous)
+  { pageKey: 'programmes',    actionKey: 'view' },
+  { pageKey: 'cadre-logique', actionKey: 'view' },
 ];
 
 // AGENT — read + créer projet + profil + occurrences propres
@@ -145,6 +149,10 @@ const GESTIONNAIRE_EXTRAS: Perm[] = [
   { pageKey: 'operations',  actionKey: 'create' },
   { pageKey: 'operations',  actionKey: 'update' },
   { pageKey: 'operations',  actionKey: 'delete' },
+
+  // Cadre logique : un GESTIONNAIRE peut éditer (ses activités via vérifs contextuelles)
+  { pageKey: 'cadre-logique', actionKey: 'create' },
+  { pageKey: 'cadre-logique', actionKey: 'update' },
 ];
 
 const GESTIONNAIRE_PERMS: Perm[] = [...AGENT_PERMS, ...GESTIONNAIRE_EXTRAS];
@@ -184,6 +192,14 @@ const COORDINATEUR_EXTRAS: Perm[] = [
   { pageKey: 'detail-projet', actionKey: 'move-en-cours' },
   { pageKey: 'detail-projet', actionKey: 'move-termine' },
   { pageKey: 'detail-projet', actionKey: 'move-en-attente' },
+
+  // Programmes — gestion complète
+  { pageKey: 'programmes', actionKey: 'create' },
+  { pageKey: 'programmes', actionKey: 'update' },
+  { pageKey: 'programmes', actionKey: 'delete' },
+
+  // Cadre logique — suppression réservée COORDINATEUR+
+  { pageKey: 'cadre-logique', actionKey: 'delete' },
 ];
 
 const COORDINATEUR_PERMS: Perm[] = [...GESTIONNAIRE_PERMS, ...COORDINATEUR_EXTRAS];
