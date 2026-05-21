@@ -30,6 +30,7 @@ model Projet {
   tauxAchevementReel      Float     @default(0)
   tauxAchevementAttendu   Float     @default(0)
   entiteId                String?
+  programmeId             String?
 
   creePar    String?   @db.VarChar(255)
   creeLe     DateTime?
@@ -37,6 +38,7 @@ model Projet {
   modifieLe  DateTime?
 
   entitePorteuse  Entite?           @relation("ProjetPorteur", fields: [entiteId], references: [id], onDelete: SetNull)
+  programme       Programme?        @relation(fields: [programmeId], references: [id], onDelete: SetNull)
   chefProjet      PersonneRessource @relation("ProjetChef", fields: [chefProjetId], references: [id])
   equipeProjet    PersonneRessource[] @relation("EquipeProjet")
   taches           Tache[]
@@ -44,6 +46,7 @@ model Projet {
   risques          RisqueProjet[]
   activitesTaches  ActiviteTache[]
   operationsInduites Operation[]    @relation("OperationProjetSource")
+  resultats        ResultatAttendu[]
 
   @@map("projets")
 }
@@ -67,6 +70,7 @@ model Entite {
   projetsPortes        Projet[]            @relation("ProjetPorteur")
   operations           Operation[]         @relation("OperationEntite")
   tachesOp             TacheOperationnelle[] @relation("TacheOpEntite")
+  programmesPilotes    Programme[]         @relation("ProgrammePilote")
 
   @@map("entites")
 }
@@ -96,6 +100,7 @@ model PersonneRessource {
   operationsResponsable   Operation[]             @relation("OperationResponsable")
   tachesOpResponsable     TacheOperationnelle[]   @relation("TacheOpResponsable")
   occurrencesRealisees    OccurrenceTache[]       @relation("OccurrenceRealisePar")
+  activitesResponsables   Activite[]              @relation("ActiviteResponsable")
   compteAcces             CompteAcces?
 
   @@map("personnes_ressources")
@@ -222,6 +227,7 @@ model Tache {
   dateFinPrevisionnelle   DateTime?
   dateFinEffective        DateTime?
   ordre                   Int      @default(0)
+  activiteId              String?
 
   creePar    String?   @db.VarChar(255)
   creeLe     DateTime?
@@ -229,6 +235,7 @@ model Tache {
   modifieLe  DateTime?
 
   projet       Projet              @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  activite     Activite?           @relation(fields: [activiteId], references: [id], onDelete: SetNull)
   assigneA     PersonneRessource?  @relation("TacheAssignee", fields: [assigneAId], references: [id], onDelete: SetNull)
   commentaires    CommentaireTache[]
   activites       ActiviteTache[]
@@ -457,4 +464,84 @@ model HistoriqueModification {
   @@index([table, enregistrementId])
   @@index([dateCree])
   @@map("historique_modifications")
+}
+
+// ─────────────────────────────────────────────
+// MODULE PROGRAMME / CADRE LOGIQUE (LogFrame)
+// Voir docs/MIGRATION_CADRE_LOGIQUE.md
+// ─────────────────────────────────────────────
+
+model Programme {
+  id           String    @id @default(cuid())
+  libelle      String    @unique @db.VarChar(255)
+  code         String?   @unique @db.VarChar(100)
+  description  String?   @db.Text
+  bailleur     String?   @db.VarChar(255)
+  dateDebut    DateTime?
+  dateFin      DateTime?
+  budgetTotal  Float?
+  devise       String    @default("XOF") @db.VarChar(10)
+  statut       String    @default("Actif") @db.VarChar(50)
+  entiteId     String?
+
+  creePar    String?   @db.VarChar(255)
+  creeLe     DateTime?
+  modifiePar String?   @db.VarChar(255)
+  modifieLe  DateTime?
+
+  entite   Entite?  @relation("ProgrammePilote", fields: [entiteId], references: [id], onDelete: SetNull)
+  projets  Projet[]
+
+  @@map("programmes")
+}
+
+model ResultatAttendu {
+  id          String  @id @default(cuid())
+  projetId    String
+  code        String  @db.VarChar(50)
+  libelle     String  @db.VarChar(500)
+  description String? @db.Text
+  ordre       Int     @default(0)
+
+  creePar    String?   @db.VarChar(255)
+  creeLe     DateTime?
+  modifiePar String?   @db.VarChar(255)
+  modifieLe  DateTime?
+
+  projet    Projet     @relation(fields: [projetId], references: [id], onDelete: Cascade)
+  activites Activite[]
+
+  @@unique([projetId, code])
+  @@map("resultats_attendus")
+}
+
+model Activite {
+  id               String    @id @default(cuid())
+  resultatId       String
+  parentActiviteId String?
+  code             String    @db.VarChar(50)
+  libelle          String    @db.VarChar(500)
+  description      String?   @db.Text
+  responsableId    String?
+  dateDebutPrev    DateTime?
+  dateFinPrev      DateTime?
+  dateDebutEff     DateTime?
+  dateFinEff       DateTime?
+  statut           String    @default("Planifiée") @db.VarChar(50)
+  progression      Int       @default(0)
+  ordre            Int       @default(0)
+
+  creePar    String?   @db.VarChar(255)
+  creeLe     DateTime?
+  modifiePar String?   @db.VarChar(255)
+  modifieLe  DateTime?
+
+  resultat    ResultatAttendu    @relation(fields: [resultatId], references: [id], onDelete: Cascade)
+  parent      Activite?          @relation("ActiviteHierarchie", fields: [parentActiviteId], references: [id], onDelete: SetNull)
+  enfants     Activite[]         @relation("ActiviteHierarchie")
+  responsable PersonneRessource? @relation("ActiviteResponsable", fields: [responsableId], references: [id], onDelete: SetNull)
+  taches      Tache[]
+
+  @@unique([resultatId, code])
+  @@map("activites")
 }
